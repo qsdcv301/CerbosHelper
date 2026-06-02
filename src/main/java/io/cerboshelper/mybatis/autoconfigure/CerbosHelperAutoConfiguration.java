@@ -1,6 +1,7 @@
 package io.cerboshelper.mybatis.autoconfigure;
 
 import io.cerboshelper.mybatis.CerbosAuthorizationClient;
+import io.cerboshelper.mybatis.CerbosAccessDeniedHandler;
 import io.cerboshelper.mybatis.CerbosCheckAspect;
 import io.cerboshelper.mybatis.CerbosHelperProperties;
 import io.cerboshelper.mybatis.CerbosMyBatisScopeInterceptor;
@@ -59,11 +60,17 @@ public class CerbosHelperAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
+    CerbosAccessDeniedHandler cerbosAccessDeniedHandler() {
+        return CerbosAccessDeniedHandler.securityException();
+    }
+
+    @Bean
     @ConditionalOnClass(Aspect.class)
     @ConditionalOnBean(CerbosAuthorizationClient.class)
     @ConditionalOnMissingBean
-    CerbosCheckAspect cerbosCheckAspect(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory, CerbosPrincipalResolver principalResolver) {
-        return new CerbosCheckAspect(authorizationClient, beanFactory, principalResolver);
+    CerbosCheckAspect cerbosCheckAspect(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory, CerbosPrincipalResolver principalResolver, CerbosAccessDeniedHandler accessDeniedHandler) {
+        return new CerbosCheckAspect(authorizationClient, beanFactory, principalResolver, accessDeniedHandler);
     }
 
     @Bean

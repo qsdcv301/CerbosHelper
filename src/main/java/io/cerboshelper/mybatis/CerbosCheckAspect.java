@@ -17,12 +17,14 @@ public class CerbosCheckAspect {
     private final CerbosAuthorizationClient authorizationClient;
     private final BeanFactory beanFactory;
     private final CerbosPrincipalResolver principalResolver;
+    private final CerbosAccessDeniedHandler accessDeniedHandler;
     private final CerbosMethodExpressionEvaluator expressionEvaluator;
 
-    public CerbosCheckAspect(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory, CerbosPrincipalResolver principalResolver) {
+    public CerbosCheckAspect(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory, CerbosPrincipalResolver principalResolver, CerbosAccessDeniedHandler accessDeniedHandler) {
         this.authorizationClient = authorizationClient;
         this.beanFactory = beanFactory;
         this.principalResolver = principalResolver;
+        this.accessDeniedHandler = accessDeniedHandler;
         this.expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
     }
 
@@ -35,9 +37,13 @@ public class CerbosCheckAspect {
             Object principal = expressionEvaluator.principal(check.principal(), context, principalResolver);
             for (Object resource : resolveResources(check, method, joinPoint.getArgs(), context)) {
                 if (!authorizationClient.isAllowed(principal, resource, check.action())) {
-                    throw new SecurityException("Cerbos denied action=" + check.action()
-                            + ", principal=" + describe(principal)
-                            + ", resource=" + describe(resource));
+                    throw accessDeniedHandler.denied(new CerbosDeniedDecision(
+                            check.action(),
+                            principal,
+                            resource,
+                            describe(principal),
+                            describe(resource)
+                    ));
                 }
             }
         }
@@ -204,6 +210,9 @@ public class CerbosCheckAspect {
     private String describe(Object value) {
         if (value == null) {
             return "null";
+        }
+        if (value instanceof CerbosPrincipalEnvelope envelope) {
+            return value.getClass().getSimpleName() + "(id=" + envelope.id() + ", roles=" + envelope.roles() + ")";
         }
         String id = readId(value).map(Object::toString).orElse("unknown");
         CerbosResource resource = value.getClass().getAnnotation(CerbosResource.class);

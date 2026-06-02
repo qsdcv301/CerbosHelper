@@ -17,6 +17,14 @@ public class CerbosPayloadMapper {
     }
 
     public Map<String, Object> principalPayload(Object principal) {
+        if (principal instanceof CerbosPrincipalEnvelope envelope) {
+            return Map.of(
+                    "id", envelope.id(),
+                    "policyVersion", envelope.policyVersion(),
+                    "roles", envelope.roles(),
+                    "attr", envelope.attr()
+            );
+        }
         Map<String, Object> attr = attributes(principal);
         return Map.of(
                 "id", String.valueOf(requireAny(attr, "id")),

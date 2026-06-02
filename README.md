@@ -22,9 +22,11 @@ CerbosHelper는 다음 책임을 나눠 가진다.
 | Cerbos PDP 통신 | 공식 `dev.cerbos:cerbos-sdk-java` |
 | 현재 사용자 해석 | 애플리케이션의 `CerbosPrincipalResolver` Bean |
 | principal/resource payload 생성 | `CerbosPayloadMapper` |
+| 복잡한 principal envelope | `CerbosPrincipalEnvelope` |
 | 목록 권한 범위 조회 | `@CerbosScoped` + MyBatis interceptor |
 | Cerbos Plan -> SQL WHERE | `CerbosPlanToSqlConverter` |
 | 단건/쓰기 권한 검사 | `@CerbosCheck` + AOP |
+| deny 예외 변환 | `CerbosAccessDeniedHandler` |
 | PageHelper 호환 | interceptor order verifier |
 
 목록 조회 흐름은 다음과 같다.
@@ -68,11 +70,11 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.1'
+    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.2'
 }
 ```
 
-CerbosHelper `v1.0.1`은 내부적으로 다음 Cerbos SDK 계열 의존성을 사용한다.
+CerbosHelper `v1.0.2`는 내부적으로 다음 Cerbos SDK 계열 의존성을 사용한다.
 
 ```groovy
 implementation 'dev.cerbos:cerbos-sdk-java:0.18.0'
@@ -375,6 +377,54 @@ cerboshelper:
     - authenticated
 ```
 
+### 복잡한 Principal
+
+프로젝트에 따라 principal은 단순한 `id + roles`가 아닐 수 있다. 예를 들어 tenant, company, site, organization, admin scope, delegated scope, system role 같은 데이터를 이미 인증 모듈에서 하나의 권한 snapshot으로 만들고 있을 수 있다.
+
+이 경우 `CerbosPrincipalEnvelope`를 반환하면 custom `CerbosPayloadMapper` 없이도 `id`, `roles`, `attr`, `policyVersion`을 그대로 Cerbos에 전달할 수 있다.
+
+```java
+@Component
+public class SecurityCerbosPrincipalResolver implements CerbosPrincipalResolver {
+    private final RequestContextResolver requestContextResolver;
+
+    public SecurityCerbosPrincipalResolver(RequestContextResolver requestContextResolver) {
+        this.requestContextResolver = requestContextResolver;
+    }
+
+    @Override
+    public Optional<Object> currentPrincipal() {
+        AuthenticatedUser user = requestContextResolver.requireUser();
+        return Optional.of(new CerbosPrincipalEnvelope(
+                String.valueOf(user.userId()),
+                user.cerbosRoles(),
+                Map.of(
+                        "tenantId", user.tenantId(),
+                        "tenantIds", user.tenantIds(),
+                        "tenantAdmin", user.tenantAdmin(),
+                        "companyIds", user.companyIds(),
+                        "siteIds", user.siteIds(),
+                        "organizationIds", user.organizationIds(),
+                        "organizationAdminIds", user.organizationAdminIds(),
+                        "organizationRepIds", user.organizationRepIds()
+                ),
+                "default"
+        ));
+    }
+}
+```
+
+`CerbosPrincipalEnvelope`는 다음 값을 가진다.
+
+| field | 설명 |
+|-------|------|
+| `id` | Cerbos principal id. 필수 |
+| `roles` | Cerbos top-level roles. 예: `authenticated`, `SYSTEM_ADMIN`, tenant role code |
+| `attr` | `request.principal.attr.*`로 전달할 map |
+| `policyVersion` | principal policy version |
+
+`attr`에 null 값이 포함될 수는 있지만, 공식 SDK builder로 전송할 때 null attr는 제외된다. 정책에서 null 자체를 판단해야 하면 `hasXxx`, `xxxPresent`, `xxxStatus` 같은 명시적 attr를 추가하는 방식을 권장한다.
+
 ## 6. Override 문법
 
 대부분은 convention으로 처리한다. 그래도 직접 지정이 필요하면 `mapper` / `finder` 또는 SpEL을 사용할 수 있다.
@@ -473,7 +523,41 @@ CerbosHelper 내부 통신은 공식 Cerbos Java SDK를 사용한다. 개발자�
 
 이 경우 애플리케이션에서 `CerbosAuthorizationClient` Bean을 직접 등록하면 auto configuration의 기본 SDK client는 생성되지 않는다.
 
-## 9. 다른 프로젝트에 붙일 때 필요한 것
+## 9. Deny 예외 커스터마이징
+
+기본적으로 `@CerbosCheck`에서 deny가 발생하면 `SecurityException`을 던진다.
+
+프로젝트의 API 오류 계약이 다르면 `CerbosAccessDeniedHandler` Bean을 등록한다. 예를 들어 Spring Security의 `AccessDeniedException`을 쓰고 싶으면 다음처럼 등록한다.
+
+```java
+@Bean
+CerbosAccessDeniedHandler cerbosAccessDeniedHandler() {
+    return decision -> new AccessDeniedException(decision.message());
+}
+```
+
+업무 예외 타입을 써야 하는 프로젝트도 같은 방식으로 연결한다.
+
+```java
+@Bean
+CerbosAccessDeniedHandler cerbosAccessDeniedHandler() {
+    return decision -> new BusinessException(ErrorCode.ACCESS_DENIED, decision.message());
+}
+```
+
+handler는 `CerbosDeniedDecision`을 받는다.
+
+| field | 설명 |
+|-------|------|
+| `action` | deny된 action |
+| `principal` | 실제 principal 객체 |
+| `resource` | 실제 resource 객체 |
+| `principalDescription` | 로그/메시지용 principal 요약 |
+| `resourceDescription` | 로그/메시지용 resource 요약 |
+
+이 hook은 `@CerbosScoped` 목록 조회가 아니라 `@CerbosCheck` 단건/쓰기 guard에 적용된다. 목록 조회는 Cerbos Plan을 SQL로 변환해 허용된 row만 반환하므로 개별 row deny 예외를 던지지 않는다.
+
+## 10. 다른 프로젝트에 붙일 때 필요한 것
 
 필수 작업은 다음이다.
 
@@ -493,6 +577,8 @@ CerbosHelper 내부 통신은 공식 Cerbos Java SDK를 사용한다. 개발자�
 - 단건 조회 메서드가 `findById`가 아니면 `finder = "..."`를 지정한다.
 - 반환 타입만으로 resource kind를 알 수 없는 Mapper는 `@CerbosScoped(resourceKind = "...")`를 지정한다.
 - top-level Cerbos role이 `authenticated`가 아니면 `cerboshelper.principal-roles`를 설정한다.
+- 복잡한 principal envelope를 그대로 보내야 하면 `CerbosPrincipalEnvelope`를 반환한다.
+- deny 예외를 프로젝트 표준으로 바꾸려면 `CerbosAccessDeniedHandler` Bean을 등록한다.
 
 문제가 생겼을 때는 실패 메시지에서 다음 항목을 먼저 확인한다.
 
@@ -503,7 +589,7 @@ CerbosHelper 내부 통신은 공식 Cerbos Java SDK를 사용한다. 개발자�
 - Cerbos plan의 attr 이름이 `@CerbosResource` / `@CerbosAttribute` 매핑과 맞는지
 - PageHelper와 함께 쓸 때 기동 로그에 `CerbosMyBatisScopeInterceptor`가 마지막에 있는지
 
-## 10. 1.0.0에서 1.0.1로 올릴 때
+## 11. 1.0.0에서 1.0.1로 올릴 때
 
 `1.0.1`은 외부 annotation API를 유지하면서 내부 Cerbos 통신을 직접 REST 호출에서 공식 Java SDK/gRPC로 바꾼 패치 릴리스다.
 
@@ -539,13 +625,49 @@ cerboshelper:
 4. `@CerbosCheck`가 붙은 단건/수정/삭제 API를 호출한다.
 5. 가능하면 Cerbos decision log 또는 demo row trace에서 `PlanResources`와 `CheckResources` 결과가 같은 정책 의미를 갖는지 확인한다.
 
-## 11. 릴리스
+## 12. 1.0.1에서 1.0.2로 올릴 때
+
+`1.0.2`는 복잡한 엔터프라이즈 principal과 프로젝트별 예외 계약을 더 쉽게 붙이기 위한 패치 릴리스다.
+
+추가된 것:
+
+- `CerbosPrincipalEnvelope`
+- `CerbosAccessDeniedHandler`
+- `CerbosDeniedDecision`
+
+기존 코드에서 그대로 유지되는 것:
+
+- `@CerbosScoped`
+- `@CerbosCheck`
+- `CerbosPrincipalResolver`
+- `@CerbosResource`
+- `@CerbosAttribute`
+- `cerboshelper.target`
+
+일반 프로젝트는 반드시 수정할 필요가 없다. 기존 방식처럼 현재 사용자 객체를 resolver에서 반환해도 된다.
+
+복잡한 principal을 가진 프로젝트는 resolver 반환값만 다음처럼 바꿀 수 있다.
+
+```java
+return Optional.of(new CerbosPrincipalEnvelope(id, roles, attr, policyVersion));
+```
+
+프로젝트 표준 예외를 써야 하면 다음 Bean만 추가한다.
+
+```java
+@Bean
+CerbosAccessDeniedHandler cerbosAccessDeniedHandler() {
+    return decision -> new AccessDeniedException(decision.message());
+}
+```
+
+## 13. 릴리스
 
 GitHub/JitPack 릴리스는 태그 기준이다.
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.2
+git push origin v1.0.2
 ```
 
 새 기능을 의존성으로 쓰려면 사용하는 프로젝트의 버전을 새 태그로 올린다.
