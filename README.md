@@ -4,12 +4,51 @@ Spring Boot + MyBatis 프로젝트에서 Cerbos 권한 범위를 annotation 중�
 
 일반 사용 흐름에서는 `CerbosAuthorizationClient`, `CerbosPlanToSqlConverter`, Cerbos 요청 JSON, column registry를 직접 작성하지 않는다.
 
+`v1.0.1`부터 Cerbos PDP 통신은 공식 Cerbos Java SDK를 사용한다. 이 라이브러리의 목적은 SDK를 숨기는 것이 아니라, SDK가 제공하는 `CheckResources` / `PlanResources`를 Spring Boot + MyBatis + PostgreSQL + PageHelper 흐름에 자연스럽게 연결하는 것이다.
+
 핵심 사용 방식은 다음 네 가지다.
 
 1. 현재 사용자 principal을 `CerbosPrincipalResolver` Bean으로 제공한다.
 2. 정책 대상 DTO/record/class에 `@CerbosResource`를 붙인다.
 3. 목록 Mapper에 `@CerbosScoped`를 붙인다.
 4. 단건/쓰기 서비스 메서드에 `@CerbosCheck`를 붙인다.
+
+## 0. 동작 구조
+
+CerbosHelper는 다음 책임을 나눠 가진다.
+
+| 영역 | 담당 |
+|------|------|
+| Cerbos PDP 통신 | 공식 `dev.cerbos:cerbos-sdk-java` |
+| 현재 사용자 해석 | 애플리케이션의 `CerbosPrincipalResolver` Bean |
+| principal/resource payload 생성 | `CerbosPayloadMapper` |
+| 목록 권한 범위 조회 | `@CerbosScoped` + MyBatis interceptor |
+| Cerbos Plan -> SQL WHERE | `CerbosPlanToSqlConverter` |
+| 단건/쓰기 권한 검사 | `@CerbosCheck` + AOP |
+| PageHelper 호환 | interceptor order verifier |
+
+목록 조회 흐름은 다음과 같다.
+
+```text
+Service calls mapper
+-> MyBatis Executor query intercepted
+-> CerbosPrincipalResolver resolves current principal
+-> official Cerbos SDK calls PlanResources over gRPC
+-> Cerbos Plan AST is converted to SQL WHERE
+-> MyBatis query continues
+-> PageHelper count/page SQL runs against the scoped SQL
+```
+
+단건/쓰기 흐름은 다음과 같다.
+
+```text
+Service method annotated with @CerbosCheck
+-> existing resource is inferred from documentId-style parameter when needed
+-> official Cerbos SDK calls CheckResources over gRPC
+-> denied requests fail before service mutation proceeds
+```
+
+개발자는 일반적으로 공식 `CerbosBlockingClient`, `CerbosAuthorizationClient`, `CerbosPlanToSqlConverter`를 직접 주입하지 않는다.
 
 ## 1. 설치
 
@@ -29,15 +68,54 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.0'
+    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.1'
 }
 ```
 
-Cerbos 서버 주소를 설정한다.
+CerbosHelper `v1.0.1`은 내부적으로 다음 Cerbos SDK 계열 의존성을 사용한다.
+
+```groovy
+implementation 'dev.cerbos:cerbos-sdk-java:0.18.0'
+implementation 'io.grpc:grpc-core:1.79.0'
+implementation 'com.google.protobuf:protobuf-java-util:4.33.5'
+```
+
+일반 애플리케이션은 위 의존성을 직접 추가하지 않아도 된다. 다만 이미 gRPC/protobuf를 직접 쓰는 프로젝트라면 effective dependency version이 충돌하지 않는지 `./gradlew dependencies`로 확인하는 것을 권장한다.
+
+Cerbos PDP gRPC target을 설정한다. 공식 Java SDK는 gRPC 포트인 `3593`을 사용한다.
 
 ```yaml
 cerboshelper:
-  base-url: ${CERBOS_BASE_URL:http://localhost:3592}
+  target: ${CERBOS_TARGET:localhost:3593}
+```
+
+기존 REST 설정과의 호환을 위해 `base-url`만 있으면 host를 읽어 `3593` target으로 변환한다. 신규 프로젝트에서는 `target`을 직접 쓰는 것을 권장한다.
+
+설정 키는 다음과 같다.
+
+| key | 기본값 | 설명 |
+|-----|--------|------|
+| `cerboshelper.target` | 비어 있음 | 공식 SDK가 연결할 gRPC target. 예: `localhost:3593`, `cerbos:3593` |
+| `cerboshelper.base-url` | `http://localhost:3592` | 기존 REST 설정 호환용. `target`이 없을 때 host를 읽어 `3593`으로 변환 |
+| `cerboshelper.plaintext` | `true` | 로컬/내부망 PDP에 plaintext gRPC 연결 |
+| `cerboshelper.insecure` | `false` | TLS 사용 시 insecure trust 설정 |
+| `cerboshelper.timeout` | `1s` | SDK blocking call timeout |
+| `cerboshelper.policy-version` | `default` | principal/resource policy version |
+| `cerboshelper.principal-roles` | `authenticated` | Cerbos principal top-level roles |
+
+Docker Compose에서 Cerbos를 함께 띄우는 경우 예시는 다음과 같다.
+
+```yaml
+services:
+  app:
+    environment:
+      CERBOS_TARGET: cerbos:3593
+
+  cerbos:
+    image: ghcr.io/cerbos/cerbos:0.53.0
+    ports:
+      - "3592:3592"
+      - "3593:3593"
 ```
 
 파라미터 이름 기반 convention을 쓰려면 Java 컴파일에 `-parameters`를 켠다.
@@ -95,6 +173,20 @@ SQL 변환 대상에서 제외할 필드는 `ignore = true`를 쓴다.
 String displayOnlyText
 ```
 
+principal과 resource는 같은 attribute mapper를 사용한다. 즉 Java 객체의 필드, record component, getter, `@CerbosAttribute`가 Cerbos `attr`로 전달된다.
+
+| Java 값 | Cerbos attr 처리 |
+|---------|------------------|
+| `String`, `char` | string |
+| `Number` | number |
+| `boolean` | bool |
+| `List` / `Iterable` | list |
+| `Map` | map |
+| 기타 객체 | `toString()` |
+| `null` | SDK builder 제약상 attr에서 제외 |
+
+정책에서 null 자체를 중요한 조건으로 다뤄야 한다면, 애플리케이션 DTO에서 `hasXxx`, `xxxPresent`, `xxxStatus` 같은 명시적 필드를 두는 방식을 권장한다.
+
 ## 3. 목록 조회
 
 Mapper 조회 메서드에 `@CerbosScoped`를 붙인다.
@@ -146,6 +238,8 @@ PageHelper와 같이 쓰면 Cerbos scope 조건이 먼저 SQL에 반영되고, P
 ```text
 cerboshelper.mybatis.interceptor-order [PageInterceptor, CerbosMyBatisScopeInterceptor]
 ```
+
+이 로그에서 `CerbosMyBatisScopeInterceptor`가 마지막에 있어야 한다. MyBatis plugin chain 특성상 마지막에 등록된 interceptor가 query 진입 시 먼저 실행되므로, Cerbos WHERE가 먼저 합쳐지고 PageHelper가 그 결과를 기준으로 count/page SQL을 만든다.
 
 ## 4. 단건 권한 체크
 
@@ -354,23 +448,37 @@ SQL 병합은 기존 `WHERE`와 top-level `ORDER BY`를 기준으로 처리한�
 
 지원하지 않는 Cerbos 변수나 operator가 나오면 전체 조회로 fallback하지 않고 예외를 발생시킨다. 이때 리소스 객체의 `@CerbosResource`, `@CerbosAttribute`, SQL alias, 정책의 `request.resource.attr.*` 이름이 서로 맞는지 먼저 확인한다.
 
+CerbosHelper는 안전하지 않은 plan을 넓은 조회로 바꾸지 않는다. 변환할 수 없는 plan은 실패시키는 것이 기본 철학이다. 권한 필터가 실패했는데 전체 데이터를 반환하는 동작은 허용하지 않는다.
+
 ## 8. 기본 사용에서 직접 다루지 않는 것
 
 일반 사용 경로에서는 다음을 직접 작성하지 않는다.
 
 - `CerbosAuthorizationClient`
+- 공식 `CerbosBlockingClient`
 - `CerbosPlanToSqlConverter`
 - Cerbos 요청 JSON
 - principal/resource payload mapper
 - resource column registry
 - MyBatis interceptor 순서 조정
 
+CerbosHelper 내부 통신은 공식 Cerbos Java SDK를 사용한다. 개발자는 SDK client를 직접 주입하지 않아도 되고, 필요한 경우 `CerbosAuthorizationClient` Bean을 직접 등록해 기본 SDK 구현을 대체할 수 있다.
+
+기본 구현은 `CerbosSdkAuthorizationClient`다. 직접 대체가 필요한 예시는 다음과 같다.
+
+- 조직 표준 gRPC channel 설정을 반드시 써야 하는 경우
+- mTLS 인증서 로딩을 별도 보안 모듈에서 관리하는 경우
+- Cerbos Hub / custom gateway / sidecar 정책에 맞춘 header나 interceptor가 필요한 경우
+- 테스트에서 PDP 없이 결정 결과를 고정하고 싶은 경우
+
+이 경우 애플리케이션에서 `CerbosAuthorizationClient` Bean을 직접 등록하면 auto configuration의 기본 SDK client는 생성되지 않는다.
+
 ## 9. 다른 프로젝트에 붙일 때 필요한 것
 
 필수 작업은 다음이다.
 
 1. JitPack repository와 `CerbosHelper` dependency를 추가한다.
-2. `cerboshelper.base-url`을 설정한다.
+2. `cerboshelper.target`을 설정한다.
 3. Java compiler option `-parameters`를 켠다.
 4. 현재 사용자 객체를 반환하는 `CerbosPrincipalResolver` Bean을 등록한다.
 5. Cerbos 정책 대상 객체에 `@CerbosResource`를 붙인다.
@@ -395,13 +503,49 @@ SQL 병합은 기존 `WHERE`와 top-level `ORDER BY`를 기준으로 처리한�
 - Cerbos plan의 attr 이름이 `@CerbosResource` / `@CerbosAttribute` 매핑과 맞는지
 - PageHelper와 함께 쓸 때 기동 로그에 `CerbosMyBatisScopeInterceptor`가 마지막에 있는지
 
-## 10. 릴리스
+## 10. 1.0.0에서 1.0.1로 올릴 때
+
+`1.0.1`은 외부 annotation API를 유지하면서 내부 Cerbos 통신을 직접 REST 호출에서 공식 Java SDK/gRPC로 바꾼 패치 릴리스다.
+
+애플리케이션 코드에서 그대로 유지되는 것:
+
+- `@CerbosScoped`
+- `@CerbosCheck`
+- `@CerbosScope`
+- `@CerbosResource`
+- `@CerbosAttribute`
+- `CerbosPrincipalResolver`
+- `CerbosAuthorizationClient` 확장 지점
+
+확인하거나 바꿔야 하는 것:
+
+- Cerbos PDP의 gRPC 포트 `3593`이 애플리케이션에서 접근 가능한지 확인한다.
+- 신규 설정은 `cerboshelper.target`을 사용한다.
+- 기존에 `cerboshelper.base-url=http://cerbos:3592`만 쓰던 프로젝트는 자동으로 `cerbos:3593` target을 유추하지만, 명시적으로 `target`을 추가하는 것을 권장한다.
+- 이미 gRPC/protobuf를 쓰는 프로젝트는 dependency tree에서 effective version 충돌이 없는지 확인한다.
+
+권장 마이그레이션 예시는 다음과 같다.
+
+```yaml
+cerboshelper:
+  target: ${CERBOS_TARGET:cerbos:3593}
+```
+
+검증 순서는 다음을 권장한다.
+
+1. 애플리케이션 기동 로그에서 interceptor order를 확인한다.
+2. `@CerbosScoped`가 붙은 목록 API를 호출한다.
+3. PageHelper total/list가 권한 필터 후 결과인지 확인한다.
+4. `@CerbosCheck`가 붙은 단건/수정/삭제 API를 호출한다.
+5. 가능하면 Cerbos decision log 또는 demo row trace에서 `PlanResources`와 `CheckResources` 결과가 같은 정책 의미를 갖는지 확인한다.
+
+## 11. 릴리스
 
 GitHub/JitPack 릴리스는 태그 기준이다.
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
 새 기능을 의존성으로 쓰려면 사용하는 프로젝트의 버전을 새 태그로 올린다.

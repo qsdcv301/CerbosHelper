@@ -3,7 +3,6 @@ package io.cerboshelper.mybatis.autoconfigure;
 import io.cerboshelper.mybatis.CerbosAuthorizationClient;
 import io.cerboshelper.mybatis.CerbosCheckAspect;
 import io.cerboshelper.mybatis.CerbosHelperProperties;
-import io.cerboshelper.mybatis.CerbosHttpAuthorizationClient;
 import io.cerboshelper.mybatis.CerbosMyBatisScopeInterceptor;
 import io.cerboshelper.mybatis.CerbosPayloadMapper;
 import io.cerboshelper.mybatis.CerbosPlanToSqlConverter;
@@ -12,6 +11,7 @@ import io.cerboshelper.mybatis.CerbosResource;
 import io.cerboshelper.mybatis.CerbosResourceColumnRegistry;
 import io.cerboshelper.mybatis.CerbosResourceColumns;
 import io.cerboshelper.mybatis.CerbosScopeAspect;
+import io.cerboshelper.mybatis.CerbosSdkAuthorizationClient;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.apache.ibatis.plugin.Interceptor;
@@ -28,8 +28,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
-import org.springframework.web.client.RestClient;
 import org.aspectj.lang.annotation.Aspect;
+import dev.cerbos.sdk.CerbosBlockingClient;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -46,10 +46,10 @@ public class CerbosHelperAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnClass(RestClient.class)
+    @ConditionalOnClass(CerbosBlockingClient.class)
     @ConditionalOnMissingBean(CerbosAuthorizationClient.class)
     CerbosAuthorizationClient cerbosAuthorizationClient(CerbosHelperProperties properties, CerbosPayloadMapper payloadMapper) {
-        return new CerbosHttpAuthorizationClient(properties, payloadMapper);
+        return new CerbosSdkAuthorizationClient(properties, payloadMapper);
     }
 
     @Bean
