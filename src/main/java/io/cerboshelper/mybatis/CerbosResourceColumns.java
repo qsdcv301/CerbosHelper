@@ -2,6 +2,7 @@ package io.cerboshelper.mybatis;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.RecordComponent;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -49,7 +50,7 @@ public final class CerbosResourceColumns implements CerbosResourceColumnRegistry
             if (resourceKind == null || resourceKind.isBlank()) {
                 throw new IllegalArgumentException("resourceKind must not be blank");
             }
-            columnsByKind.put(resourceKind, inspect(resourceType, sqlAlias));
+            columnsByKind.put(resourceKind, inspect(resourceKind, resourceType, sqlAlias));
             return this;
         }
 
@@ -65,54 +66,55 @@ public final class CerbosResourceColumns implements CerbosResourceColumnRegistry
             return new CerbosResourceColumns(Map.copyOf(copy));
         }
 
-        private Map<String, String> inspect(Class<?> resourceType, String sqlAlias) {
+        private Map<String, String> inspect(String resourceKind, Class<?> resourceType, String sqlAlias) {
             Map<String, String> columns = new LinkedHashMap<>();
+            String qualifier = sqlAlias == null || sqlAlias.isBlank() ? resourceKind : sqlAlias;
             if (resourceType.isRecord()) {
                 for (RecordComponent component : resourceType.getRecordComponents()) {
                     CerbosAttribute attribute = component.getAnnotation(CerbosAttribute.class);
                     if (attribute != null && attribute.ignore()) {
                         continue;
                     }
-                    addColumn(columns, component.getName(), attribute, sqlAlias);
+                    addColumn(columns, component.getName(), attribute, qualifier);
                 }
                 return columns;
             }
 
             for (Field field : resourceType.getDeclaredFields()) {
-                if (field.isSynthetic()) {
+                if (field.isSynthetic() || Modifier.isStatic(field.getModifiers())) {
                     continue;
                 }
                 CerbosAttribute attribute = field.getAnnotation(CerbosAttribute.class);
                 if (attribute != null && attribute.ignore()) {
                     continue;
                 }
-                addColumn(columns, field.getName(), attribute, sqlAlias);
+                addColumn(columns, field.getName(), attribute, qualifier);
             }
             for (Method method : resourceType.getMethods()) {
                 CerbosAttribute attribute = method.getAnnotation(CerbosAttribute.class);
                 if (attribute == null || attribute.ignore()) {
                     continue;
                 }
-                addColumn(columns, methodNameToProperty(method.getName()), attribute, sqlAlias);
+                addColumn(columns, methodNameToProperty(method.getName()), attribute, qualifier);
             }
             return columns;
         }
 
-        private void addColumn(Map<String, String> columns, String defaultAttributeName, CerbosAttribute attribute, String sqlAlias) {
+        private void addColumn(Map<String, String> columns, String defaultAttributeName, CerbosAttribute attribute, String qualifier) {
             String attributeName = attribute != null && !attribute.value().isBlank()
                     ? attribute.value()
                     : defaultAttributeName;
             String column = attribute != null && !attribute.column().isBlank()
                     ? attribute.column()
-                    : qualify(sqlAlias, camelToSnake(attributeName));
+                    : qualify(qualifier, camelToSnake(attributeName));
             columns.put(RESOURCE_ATTR_PREFIX + attributeName, column);
         }
 
-        private String qualify(String sqlAlias, String column) {
-            if (sqlAlias == null || sqlAlias.isBlank()) {
+        private String qualify(String qualifier, String column) {
+            if (qualifier == null || qualifier.isBlank()) {
                 return column;
             }
-            return sqlAlias + "." + column;
+            return qualifier + "." + column;
         }
 
         private String methodNameToProperty(String methodName) {

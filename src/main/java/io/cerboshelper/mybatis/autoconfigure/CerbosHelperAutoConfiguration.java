@@ -1,6 +1,10 @@
 package io.cerboshelper.mybatis.autoconfigure;
 
+import io.cerboshelper.mybatis.CerbosAuthorizationClient;
+import io.cerboshelper.mybatis.CerbosHelperProperties;
+import io.cerboshelper.mybatis.CerbosHttpAuthorizationClient;
 import io.cerboshelper.mybatis.CerbosMyBatisScopeInterceptor;
+import io.cerboshelper.mybatis.CerbosPayloadMapper;
 import io.cerboshelper.mybatis.CerbosPlanProvider;
 import io.cerboshelper.mybatis.CerbosPlanToSqlConverter;
 import io.cerboshelper.mybatis.CerbosResource;
@@ -15,18 +19,35 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
+import org.springframework.web.client.RestClient;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
 @AutoConfiguration
+@EnableConfigurationProperties(CerbosHelperProperties.class)
 public class CerbosHelperAutoConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    CerbosPayloadMapper cerbosPayloadMapper(CerbosHelperProperties properties) {
+        return new CerbosPayloadMapper(properties);
+    }
+
+    @Bean
+    @ConditionalOnClass(RestClient.class)
+    @ConditionalOnMissingBean(CerbosPlanProvider.class)
+    CerbosAuthorizationClient cerbosAuthorizationClient(CerbosHelperProperties properties, CerbosPayloadMapper payloadMapper) {
+        return new CerbosHttpAuthorizationClient(properties, payloadMapper);
+    }
+
     @Bean
     @ConditionalOnMissingBean
     CerbosResourceColumnRegistry cerbosResourceColumnRegistry(BeanFactory beanFactory) {

@@ -1,87 +1,12 @@
 # CerbosHelper
 
-CerbosHelper is a Spring Boot + MyBatis helper library that applies Cerbos `PlanResources` results to annotated MyBatis `SELECT` statements.
+`CerbosHelper`는 Spring Boot + MyBatis 프로젝트에서 Cerbos 권한 범위를 PageHelper처럼 자연스럽게 적용하기 위한 라이브러리다.
 
-It is designed to behave like a scope-filter companion to PageHelper:
+목표는 애플리케이션 개발자가 Cerbos 요청 JSON, Plan SQL 변환, MyBatis 인터셉터 순서, resource column registry를 직접 조립하지 않게 하는 것이다. 개발자는 최소 설정, 리소스 annotation, Mapper annotation, 서비스 호출 구간만 신경 쓰면 된다.
 
-- CerbosHelper injects the Cerbos SQL predicate first.
-- PageHelper then calculates `count`, `limit`, and `offset` from the already-scoped SQL.
-- If the MyBatis interceptor order is unsafe, CerbosHelper moves its interceptor after PageHelper in the MyBatis interceptor chain so Cerbos execution wraps PageHelper execution.
-- Applications can annotate resource objects and let CerbosHelper build the Cerbos variable to SQL column registry automatically.
+## 사용 예시
 
-## Library Contract
-
-Applications provide a Cerbos plan provider bean:
-
-```java
-@Component
-class AppCerbosPlanProvider implements CerbosPlanProvider {
-    @Override
-    public JsonNode planResources(Object principal, String resourceKind, String action) {
-        // Call Cerbos /api/plan/resources or an SDK equivalent.
-    }
-}
-```
-
-Then annotate resource objects:
-
-```java
-@CerbosResource(kind = "document", sqlAlias = "d")
-record Document(
-        long id,
-        long companyId,
-        long siteId,
-        long organizationId,
-        String ownerUserId
-) {
-}
-```
-
-CerbosHelper scans `@CerbosResource` classes from the Spring Boot application package and builds a safe allowlisted column registry. By default, Java property names are converted to snake_case SQL columns, so `ownerUserId` becomes `d.owner_user_id`.
-
-Use `@CerbosAttribute` only when a field needs a different Cerbos attribute name, a different SQL column, or must be ignored.
-
-Then mapper methods can be protected with:
-
-```java
-@CerbosScoped(resourceKind = "document", action = "view")
-List<Document> findDocuments();
-```
-
-Service code passes the current principal and optional action around the mapper call:
-
-```java
-return CerbosScopeContext.with(principal, "view", () ->
-        PageHelper.startPage(pageNum, pageSize).doSelectPageInfo(mapper::findDocuments));
-```
-
-## Current Support Level
-
-This is a v0.1 helper module for Spring Boot 3, MyBatis 3.5, PostgreSQL-style SQL, and PageHelper. It supports safe column whitelisting, positional parameter binding, existing `WHERE`, and top-level `ORDER BY`.
-
-It intentionally does not cover every SQL grammar shape yet. Complex joins, nested subqueries, vendor-specific syntax, and update/delete authorization should be validated before reuse in another production project.
-
-## GitHub + JitPack Publish
-
-JitPack does not require pushing to GitHub Packages. Publish the source to the public GitHub repository and create a release tag.
-
-Local JitPack-equivalent check:
-
-```bash
-./gradlew publishToMavenLocal
-```
-
-Recommended GitHub flow:
-
-```bash
-git remote add origin https://github.com/qsdcv301/CerbosHelper.git
-git branch -M main
-git push -u origin main
-git tag v0.2.0
-git push origin v0.2.0
-```
-
-Consumers add JitPack at the end of their repositories and use the GitHub repo coordinates:
+의존성을 추가한다.
 
 ```groovy
 dependencyResolutionManagement {
@@ -95,6 +20,220 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v0.2.0'
+    implementation 'com.github.qsdcv301:CerbosHelper:v0.3.0'
 }
 ```
+
+Cerbos 서버 주소만 설정한다.
+
+```yaml
+cerboshelper:
+  base-url: ${CERBOS_BASE_URL:http://localhost:3592}
+```
+
+리소스 객체에 `@CerbosResource`를 붙인다.
+
+```java
+@CerbosResource(kind = "document")
+public record Document(
+        long id,
+        long companyId,
+        long siteId,
+        long organizationId,
+        String ownerUserId,
+        String visibility,
+        String status
+) {
+}
+```
+
+Mapper 조회 메서드에 `@CerbosScoped`를 붙인다.
+
+```java
+@Mapper
+public interface DocumentMapper {
+    @CerbosScoped(resourceKind = "document", action = "view")
+    List<Document> findDocuments();
+}
+```
+
+Mapper SQL은 가능하면 resource kind와 같은 alias를 쓴다.
+
+```xml
+<select id="findDocuments" resultType="com.example.Document">
+    SELECT
+        document.id,
+        document.company_id,
+        document.organization_id,
+        document.owner_user_id
+    FROM documents document
+    ORDER BY document.id
+</select>
+```
+
+서비스에서는 조회 구간만 `CerbosScopeContext.with(...)`로 감싼다.
+
+```java
+return CerbosScopeContext.with(principal, "view", () ->
+        PageHelper.startPage(pageNum, pageSize)
+                .doSelectPageInfo(documentMapper::findDocuments));
+```
+
+생성, 수정, 삭제처럼 단건 resource decision이 필요한 경우에는 자동 제공되는 `CerbosAuthorizationClient`를 사용한다.
+
+```java
+if (!cerbosAuthorizationClient.isAllowed(principal, document, "update")) {
+    throw new SecurityException("Cerbos denied update");
+}
+```
+
+## 자동 처리되는 일
+
+`CerbosHelper`가 자동으로 처리하는 항목은 다음과 같다.
+
+- `@CerbosResource` 객체 스캔
+- Java 필드명 또는 record component 이름을 Cerbos resource attribute로 사용
+- camelCase 필드명을 snake_case SQL 컬럼으로 변환
+- `resourceKind`를 기본 SQL qualifier로 사용
+- Cerbos `PlanResources` 호출
+- Cerbos `CheckResources` 호출
+- principal/resource 객체를 Cerbos 요청 payload로 변환
+- Cerbos Plan을 SQL `WHERE` 조건으로 변환
+- MyBatis `SELECT` SQL에 조건 주입
+- PageHelper와 충돌하지 않도록 MyBatis interceptor 순서 정리
+
+예를 들어 `@CerbosResource(kind = "document")`가 붙은 객체의 `ownerUserId` 필드는 다음처럼 변환된다.
+
+```text
+request.resource.attr.ownerUserId -> document.owner_user_id
+```
+
+특수 SQL에서 alias가 반드시 다르면 `sqlAlias`를 옵션으로 사용한다.
+
+```java
+@CerbosResource(kind = "document", sqlAlias = "d")
+```
+
+필드명과 Cerbos attribute명 또는 DB 컬럼명이 맞지 않는 경우에만 `@CerbosAttribute`를 사용한다.
+
+```java
+@CerbosAttribute(value = "ownerUserId", column = "document.owner_user_id")
+String ownerId
+```
+
+Cerbos SQL 변환 대상에서 제외할 필드는 `ignore = true`를 사용한다.
+
+```java
+@CerbosAttribute(ignore = true)
+String displayOnlyText
+```
+
+## Principal 규칙
+
+기본 client는 principal 객체도 reflection으로 읽는다.
+
+```java
+public record UserContext(
+        String userId,
+        List<String> permissions,
+        List<Long> companyIds,
+        List<Long> organizationIds
+) {
+}
+```
+
+principal id는 `id` 또는 `userId` 필드를 사용한다. 나머지 필드는 `request.principal.attr.*`로 전달된다.
+
+예를 들어 위 객체는 다음처럼 Cerbos 정책에서 사용할 수 있다.
+
+```yaml
+condition:
+  match:
+    expr: "'document:view:org' in request.principal.attr.permissions"
+```
+
+top-level Cerbos role은 기본적으로 `authenticated`를 사용한다. 필요하면 설정으로 바꾼다.
+
+```yaml
+cerboshelper:
+  principal-roles:
+    - authenticated
+```
+
+## PageHelper와의 관계
+
+PageHelper와 같이 사용할 때 권장 형태는 다음과 같다.
+
+```java
+return CerbosScopeContext.with(principal, "view", () ->
+        PageHelper.startPage(pageNum, pageSize)
+                .doSelectPageInfo(documentMapper::findDocuments));
+```
+
+정상 기동 시 다음 로그가 나온다.
+
+```text
+cerboshelper.mybatis.interceptor-order [PageInterceptor, CerbosMyBatisScopeInterceptor]
+```
+
+이 순서에서는 Cerbos scope 조건이 먼저 반영되고, PageHelper의 count/page SQL은 이미 권한 범위가 적용된 SQL을 기준으로 생성된다.
+
+## 현재 지원 범위
+
+현재 지원하는 Cerbos Plan 표현은 다음과 같다.
+
+- `and`
+- `or`
+- `not`
+- `eq`
+- `ne` / `neq`
+- `lt`
+- `le` / `lte`
+- `gt`
+- `ge` / `gte`
+- `in`
+- `null` equality 비교
+- `KIND_ALWAYS_ALLOWED`
+- `KIND_ALWAYS_DENIED`
+- `KIND_CONDITIONAL`
+
+SQL 병합은 기존 `WHERE`와 top-level `ORDER BY`를 기준으로 처리한다. 복잡한 nested subquery, vendor-specific SQL, 컬럼 대 컬럼 비교는 적용 전 별도 검증이 필요하다.
+
+## 아직 개발자가 신경 써야 하는 부분
+
+현재 남아 있는 명시 작업은 다음 정도다.
+
+- Cerbos 서버 주소 설정
+- principal 객체가 정책에 필요한 attribute를 갖도록 설계
+- resource 객체에 `@CerbosResource` 부여
+- 보호할 Mapper `SELECT` 메서드에 `@CerbosScoped` 부여
+- 조회 호출을 `CerbosScopeContext.with(...)`로 감싸기
+- create/update/delete에서 `CerbosAuthorizationClient.isAllowed(...)` 호출
+
+즉 수동 `CerbosClient`, 수동 `resourcePayload`, 수동 `principalPayload`, 수동 column registry는 기본 경로에서 필요하지 않다.
+
+## 다음 목표: 0.4.0
+
+0.4.0의 목표는 디버그 흐름도 annotation 기반으로 끌어올리는 것이다. 현재 demo의 row trace는 후보 row, Plan SQL 매칭 row, CheckResources 결과를 비교하므로 정책 디버깅 가치가 크다. 이 가치는 유지하되, 서비스 코드가 `CerbosPlanToSqlConverter`, `CerbosSqlFilter`, `filter.denied()`를 직접 알지 않도록 라이브러리 내부로 옮기는 것이 목표다.
+
+예상 방향은 다음과 같다.
+
+- trace 대상 Mapper를 annotation으로 지정
+- 후보 row 조회와 scoped row 조회를 라이브러리가 실행
+- Plan SQL, params, denied 여부, CheckResources 결과를 표준 trace response로 조립
+- 개발자는 debug endpoint에서 `cerbosTrace.trace(...)` 수준만 호출
+- 일반 조회 코드는 PageHelper처럼 `@CerbosScoped`와 `CerbosScopeContext.with(...)`만 사용
+
+## 릴리스
+
+현재 GitHub/JitPack 사용 방식은 다음과 같다.
+
+```bash
+git remote add origin https://github.com/qsdcv301/CerbosHelper.git
+git branch -M main
+git push -u origin main
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+새 기능을 JitPack 의존성으로 쓰려면 기능 커밋 후 새 태그를 발행하고, 사용하는 프로젝트의 의존성 버전을 그 태그로 올려야 한다.
