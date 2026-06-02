@@ -20,7 +20,7 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v0.4.0'
+    implementation 'com.github.qsdcv301:CerbosHelper:v0.5.0'
 }
 ```
 
@@ -113,6 +113,33 @@ public Document updateDocument(String userId, long documentId, Document document
 }
 ```
 
+Plan과 row trace를 화면이나 로그에서 확인해야 하면 디버그 전용 annotation을 붙인다. 서비스는 `CerbosAuthorizationClient`나 `CerbosPlanToSqlConverter`를 직접 주입하지 않는다.
+
+```java
+@CerbosDebugPlan(
+        resourceKind = "document",
+        principal = "@userContextService.load(#userId)"
+)
+public CerbosPlanDebugResult debugPlan(String userId, String action) {
+    throw new UnsupportedOperationException("@CerbosDebugPlan should handle this method");
+}
+```
+
+row trace는 후보 row, Cerbos scope 적용 row, scope 적용 id 조회식을 넘긴다. `PageHelper`가 있으면 `pageNum`, `pageSize` 파라미터를 사용해 `PageInfo` 형태로 응답한다.
+
+```java
+@CerbosRowTrace(
+        resourceKind = "document",
+        principal = "@userContextService.load(#userId)",
+        candidates = "@documentMapper.findAll()",
+        scopedRows = "@documentMapper.findDocuments()",
+        scopedIds = "@documentMapper.findDocumentIds()"
+)
+public CerbosRowTraceResult traceRows(String userId, String action, int pageNum, int pageSize) {
+    throw new UnsupportedOperationException("@CerbosRowTrace should handle this method");
+}
+```
+
 ## 자동 처리되는 일
 
 `CerbosHelper`가 자동으로 처리하는 항목은 다음과 같다.
@@ -125,6 +152,8 @@ public Document updateDocument(String userId, long documentId, Document document
 - Cerbos `CheckResources` 호출
 - principal/resource 객체를 Cerbos 요청 payload로 변환
 - `@CerbosCheck` 메서드 권한 검사
+- `@CerbosDebugPlan` Plan 디버그 응답 생성
+- `@CerbosRowTrace` row trace 응답 및 row별 로그 생성
 - Cerbos Plan을 SQL `WHERE` 조건으로 변환
 - MyBatis `SELECT` SQL에 조건 주입
 - PageHelper와 충돌하지 않도록 MyBatis interceptor 순서 정리
@@ -236,8 +265,9 @@ SQL 병합은 기존 `WHERE`와 top-level `ORDER BY`를 기준으로 처리한�
 - 보호할 Mapper `SELECT` 메서드에 `@CerbosScoped` 부여
 - 조회 호출을 `CerbosScopeContext.with(...)`로 감싸기
 - create/update/delete에서 `@CerbosCheck` 부여
+- 디버그 endpoint가 필요하면 `@CerbosDebugPlan` 또는 `@CerbosRowTrace` 부여
 
-즉 수동 `CerbosClient`, 수동 `resourcePayload`, 수동 `principalPayload`, 수동 column registry는 기본 경로에서 필요하지 않다.
+즉 수동 `CerbosClient`, 수동 `CerbosAuthorizationClient`, 수동 `CerbosPlanToSqlConverter`, 수동 `resourcePayload`, 수동 `principalPayload`, 수동 column registry는 기본 경로에서 필요하지 않다.
 
 ## 릴리스
 
@@ -247,8 +277,8 @@ SQL 병합은 기존 `WHERE`와 top-level `ORDER BY`를 기준으로 처리한�
 git remote add origin https://github.com/qsdcv301/CerbosHelper.git
 git branch -M main
 git push -u origin main
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
 새 기능을 JitPack 의존성으로 쓰려면 기능 커밋 후 새 태그를 발행하고, 사용하는 프로젝트의 의존성 버전을 그 태그로 올려야 한다.

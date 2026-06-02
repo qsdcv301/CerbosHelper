@@ -2,6 +2,7 @@ package io.cerboshelper.mybatis.autoconfigure;
 
 import io.cerboshelper.mybatis.CerbosAuthorizationClient;
 import io.cerboshelper.mybatis.CerbosCheckAspect;
+import io.cerboshelper.mybatis.CerbosDebugAspect;
 import io.cerboshelper.mybatis.CerbosHelperProperties;
 import io.cerboshelper.mybatis.CerbosHttpAuthorizationClient;
 import io.cerboshelper.mybatis.CerbosMyBatisScopeInterceptor;
@@ -86,6 +87,14 @@ public class CerbosHelperAutoConfiguration {
     @ConditionalOnMissingBean
     CerbosPlanToSqlConverter cerbosPlanToSqlConverter(CerbosResourceColumnRegistry columnRegistry) {
         return new CerbosPlanToSqlConverter(columnRegistry);
+    }
+
+    @Bean
+    @ConditionalOnClass(Aspect.class)
+    @ConditionalOnBean({CerbosAuthorizationClient.class, CerbosPlanToSqlConverter.class})
+    @ConditionalOnMissingBean
+    CerbosDebugAspect cerbosDebugAspect(CerbosAuthorizationClient authorizationClient, CerbosPlanToSqlConverter converter, BeanFactory beanFactory) {
+        return new CerbosDebugAspect(authorizationClient, converter, beanFactory);
     }
 
     @Bean
