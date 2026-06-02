@@ -3,7 +3,11 @@ package io.cerboshelper.mybatis.autoconfigure;
 import io.cerboshelper.mybatis.CerbosMyBatisScopeInterceptor;
 import io.cerboshelper.mybatis.CerbosPlanProvider;
 import io.cerboshelper.mybatis.CerbosPlanToSqlConverter;
+import io.cerboshelper.mybatis.CerbosResource;
 import io.cerboshelper.mybatis.CerbosResourceColumnRegistry;
+import io.cerboshelper.mybatis.CerbosResourceColumns;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.apache.ibatis.plugin.Interceptor;
 import org.apache.ibatis.plugin.InterceptorChain;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -13,28 +17,55 @@ import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.type.filter.AnnotationTypeFilter;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
 @AutoConfiguration
-@ConditionalOnBean({CerbosPlanProvider.class, CerbosResourceColumnRegistry.class})
 public class CerbosHelperAutoConfiguration {
     @Bean
+    @ConditionalOnMissingBean
+    CerbosResourceColumnRegistry cerbosResourceColumnRegistry(BeanFactory beanFactory) {
+        CerbosResourceColumns.Builder builder = CerbosResourceColumnRegistry.builder();
+        if (!AutoConfigurationPackages.has(beanFactory)) {
+            return builder.build();
+        }
+
+        ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
+        scanner.addIncludeFilter(new AnnotationTypeFilter(CerbosResource.class));
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+        for (String basePackage : AutoConfigurationPackages.get(beanFactory)) {
+            scanner.findCandidateComponents(basePackage).forEach(candidate -> {
+                try {
+                    builder.resource(Class.forName(candidate.getBeanClassName(), false, classLoader));
+                } catch (ClassNotFoundException exception) {
+                    throw new IllegalStateException("Cannot load Cerbos resource type: " + candidate.getBeanClassName(), exception);
+                }
+            });
+        }
+        return builder.build();
+    }
+
+    @Bean
+    @ConditionalOnBean(CerbosResourceColumnRegistry.class)
     @ConditionalOnMissingBean
     CerbosPlanToSqlConverter cerbosPlanToSqlConverter(CerbosResourceColumnRegistry columnRegistry) {
         return new CerbosPlanToSqlConverter(columnRegistry);
     }
 
     @Bean
+    @ConditionalOnBean({CerbosPlanProvider.class, CerbosPlanToSqlConverter.class})
     @ConditionalOnMissingBean
     CerbosMyBatisScopeInterceptor cerbosMyBatisScopeInterceptor(CerbosPlanProvider planProvider, CerbosPlanToSqlConverter converter) {
         return new CerbosMyBatisScopeInterceptor(planProvider, converter);
     }
 
     @Bean
+    @ConditionalOnBean(CerbosMyBatisScopeInterceptor.class)
     SmartInitializingSingleton cerbosHelperInterceptorOrderVerifier(List<SqlSessionFactory> sqlSessionFactories) {
         return new InterceptorOrderVerifier(sqlSessionFactories);
     }

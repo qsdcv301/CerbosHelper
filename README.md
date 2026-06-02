@@ -7,10 +7,11 @@ It is designed to behave like a scope-filter companion to PageHelper:
 - CerbosHelper injects the Cerbos SQL predicate first.
 - PageHelper then calculates `count`, `limit`, and `offset` from the already-scoped SQL.
 - If the MyBatis interceptor order is unsafe, CerbosHelper moves its interceptor after PageHelper in the MyBatis interceptor chain so Cerbos execution wraps PageHelper execution.
+- Applications can annotate resource objects and let CerbosHelper build the Cerbos variable to SQL column registry automatically.
 
 ## Library Contract
 
-Applications provide two beans:
+Applications provide a Cerbos plan provider bean:
 
 ```java
 @Component
@@ -22,15 +23,23 @@ class AppCerbosPlanProvider implements CerbosPlanProvider {
 }
 ```
 
+Then annotate resource objects:
+
 ```java
-@Component
-class AppCerbosColumnRegistry implements CerbosResourceColumnRegistry {
-    @Override
-    public Optional<String> columnFor(String resourceKind, String cerbosVariable) {
-        // Return a whitelisted SQL column, such as "d.company_id".
-    }
+@CerbosResource(kind = "document", sqlAlias = "d")
+record Document(
+        long id,
+        long companyId,
+        long siteId,
+        long organizationId,
+        String ownerUserId
+) {
 }
 ```
+
+CerbosHelper scans `@CerbosResource` classes from the Spring Boot application package and builds a safe allowlisted column registry. By default, Java property names are converted to snake_case SQL columns, so `ownerUserId` becomes `d.owner_user_id`.
+
+Use `@CerbosAttribute` only when a field needs a different Cerbos attribute name, a different SQL column, or must be ignored.
 
 Then mapper methods can be protected with:
 
@@ -86,6 +95,6 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v0.1.0'
+    implementation 'com.github.qsdcv301:CerbosHelper:v0.2.0'
 }
 ```
