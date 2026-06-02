@@ -7,7 +7,6 @@ import io.cerboshelper.mybatis.CerbosHelperProperties;
 import io.cerboshelper.mybatis.CerbosHttpAuthorizationClient;
 import io.cerboshelper.mybatis.CerbosMyBatisScopeInterceptor;
 import io.cerboshelper.mybatis.CerbosPayloadMapper;
-import io.cerboshelper.mybatis.CerbosPlanProvider;
 import io.cerboshelper.mybatis.CerbosPlanToSqlConverter;
 import io.cerboshelper.mybatis.CerbosResource;
 import io.cerboshelper.mybatis.CerbosResourceColumnRegistry;
@@ -46,7 +45,7 @@ public class CerbosHelperAutoConfiguration {
 
     @Bean
     @ConditionalOnClass(RestClient.class)
-    @ConditionalOnMissingBean(CerbosPlanProvider.class)
+    @ConditionalOnMissingBean(CerbosAuthorizationClient.class)
     CerbosAuthorizationClient cerbosAuthorizationClient(CerbosHelperProperties properties, CerbosPayloadMapper payloadMapper) {
         return new CerbosHttpAuthorizationClient(properties, payloadMapper);
     }
@@ -98,10 +97,10 @@ public class CerbosHelperAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean({CerbosPlanProvider.class, CerbosPlanToSqlConverter.class})
+    @ConditionalOnBean({CerbosAuthorizationClient.class, CerbosPlanToSqlConverter.class})
     @ConditionalOnMissingBean
-    CerbosMyBatisScopeInterceptor cerbosMyBatisScopeInterceptor(CerbosPlanProvider planProvider, CerbosPlanToSqlConverter converter) {
-        return new CerbosMyBatisScopeInterceptor(planProvider, converter);
+    CerbosMyBatisScopeInterceptor cerbosMyBatisScopeInterceptor(CerbosAuthorizationClient authorizationClient, CerbosPlanToSqlConverter converter) {
+        return new CerbosMyBatisScopeInterceptor(authorizationClient, converter);
     }
 
     @Bean

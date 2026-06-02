@@ -67,7 +67,7 @@ public class CerbosDebugAspect {
                 : CerbosScopeContext.with(principal, action, () -> ids(traceValue(rowTrace.scopedIds(), rowTrace.resourceKind(), "find" + capitalized(rowTrace.resourceKind()) + "Ids", context)));
         List<?> candidateList = rows(candidateRows);
         Map<String, String> effects = authorizationClient.checkResources(principal, candidateList, action);
-        List<CerbosRowDecision> rowDecisions = candidateList.stream()
+        List<CerbosRowTraceResult.RowDecision> rowDecisions = candidateList.stream()
                 .map(row -> rowDecision(row, rowTrace, sqlMatchedIds, effects))
                 .toList();
 
@@ -94,10 +94,10 @@ public class CerbosDebugAspect {
         return new CerbosRowTraceResult(principal, action, plan, filter.whereSql(), filter.namedParams(), filter.denied(), candidateRows, sqlMatchedRows, rowDecisions);
     }
 
-    private CerbosRowDecision rowDecision(Object row, CerbosRowTrace rowTrace, Set<Object> sqlMatchedIds, Map<String, String> effects) {
+    private CerbosRowTraceResult.RowDecision rowDecision(Object row, CerbosRowTrace rowTrace, Set<Object> sqlMatchedIds, Map<String, String> effects) {
         Object rowId = CerbosReflection.value(row, rowTrace.rowId());
         Object title = CerbosReflection.value(row, rowTrace.title());
-        return new CerbosRowDecision(
+        return new CerbosRowTraceResult.RowDecision(
                 rowId,
                 title,
                 sqlMatchedIds.contains(rowId),

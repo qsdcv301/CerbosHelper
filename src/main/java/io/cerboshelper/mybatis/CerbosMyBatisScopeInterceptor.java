@@ -31,11 +31,11 @@ public class CerbosMyBatisScopeInterceptor implements Interceptor {
     private static final Logger log = LoggerFactory.getLogger(CerbosMyBatisScopeInterceptor.class);
     private static final String PARAM_PREFIX = "__cerbos_scope_param_";
 
-    private final CerbosPlanProvider planProvider;
+    private final CerbosAuthorizationClient authorizationClient;
     private final CerbosPlanToSqlConverter planToSqlConverter;
 
-    public CerbosMyBatisScopeInterceptor(CerbosPlanProvider planProvider, CerbosPlanToSqlConverter planToSqlConverter) {
-        this.planProvider = planProvider;
+    public CerbosMyBatisScopeInterceptor(CerbosAuthorizationClient authorizationClient, CerbosPlanToSqlConverter planToSqlConverter) {
+        this.authorizationClient = authorizationClient;
         this.planToSqlConverter = planToSqlConverter;
     }
 
@@ -84,7 +84,7 @@ public class CerbosMyBatisScopeInterceptor implements Interceptor {
     }
 
     private BoundSql applyCerbosScope(MappedStatement statement, BoundSql boundSql, String resourceKind, String action, CerbosScopeContext.Request request) {
-        JsonNode plan = planProvider.planResources(request.principal(), resourceKind, action);
+        JsonNode plan = authorizationClient.planResources(request.principal(), resourceKind, action);
         CerbosSqlFilter filter = planToSqlConverter.convertPositional(resourceKind, plan);
         SqlMergeResult mergeResult = mergePredicate(boundSql.getSql(), filter.denied() ? "1 = 0" : filter.whereSql());
 

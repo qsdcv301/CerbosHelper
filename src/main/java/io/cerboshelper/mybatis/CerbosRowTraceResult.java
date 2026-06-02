@@ -14,6 +14,14 @@ public record CerbosRowTraceResult(
         boolean denied,
         Object candidateRows,
         Object sqlMatchedRows,
-        List<CerbosRowDecision> rowDecisions
+        List<RowDecision> rowDecisions
 ) {
+    public record RowDecision(
+            Object rowId,
+            Object title,
+            boolean matchedByPlanSql,
+            String checkEffect,
+            Object row
+    ) {
+    }
 }
