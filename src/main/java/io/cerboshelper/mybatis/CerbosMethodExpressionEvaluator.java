@@ -49,5 +49,9 @@ final class CerbosMethodExpressionEvaluator {
         void setVariable(String name, Object value) {
             evaluationContext.setVariable(name, value);
         }
+
+        Object variable(String name) {
+            return evaluationContext.lookupVariable(name);
+        }
     }
 }

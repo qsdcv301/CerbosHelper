@@ -12,7 +12,11 @@ import java.lang.annotation.Target;
 public @interface CerbosCheck {
     String action();
 
-    String principal() default "#principal";
+    String principal() default "";
 
-    String resource() default "#resource";
+    String resource() default "";
+
+    String resourceKind() default "";
+
+    String id() default "";
 }

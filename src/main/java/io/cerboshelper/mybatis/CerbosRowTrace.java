@@ -10,15 +10,15 @@ import java.lang.annotation.Target;
 public @interface CerbosRowTrace {
     String resourceKind();
 
-    String principal() default "#principal";
+    String principal() default "";
 
-    String action() default "#action";
+    String action() default "";
 
-    String candidates();
+    String candidates() default "";
 
-    String scopedRows();
+    String scopedRows() default "";
 
-    String scopedIds();
+    String scopedIds() default "";
 
     String rowId() default "id";
 

@@ -21,11 +21,13 @@ public class CerbosDebugAspect {
 
     private final CerbosAuthorizationClient authorizationClient;
     private final CerbosPlanToSqlConverter planToSqlConverter;
+    private final BeanFactory beanFactory;
     private final CerbosMethodExpressionEvaluator expressionEvaluator;
 
     public CerbosDebugAspect(CerbosAuthorizationClient authorizationClient, CerbosPlanToSqlConverter planToSqlConverter, BeanFactory beanFactory) {
         this.authorizationClient = authorizationClient;
         this.planToSqlConverter = planToSqlConverter;
+        this.beanFactory = beanFactory;
         this.expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
     }
 
@@ -34,8 +36,8 @@ public class CerbosDebugAspect {
         Method method = method(joinPoint);
         CerbosDebugPlan debugPlan = method.getAnnotation(CerbosDebugPlan.class);
         CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, joinPoint.getArgs());
-        Object principal = expressionEvaluator.value(debugPlan.principal(), context);
-        String action = String.valueOf(expressionEvaluator.value(debugPlan.action(), context));
+        Object principal = resolvePrincipal(debugPlan.principal(), context);
+        String action = resolveAction(debugPlan.action(), context);
         JsonNode plan = authorizationClient.planResources(principal, debugPlan.resourceKind(), action);
         CerbosSqlFilter filter = planToSqlConverter.convertNamed(debugPlan.resourceKind(), plan);
         return new CerbosPlanDebugResult(principal, action, plan, filter.whereSql(), filter.namedParams(), filter.denied());
@@ -46,8 +48,8 @@ public class CerbosDebugAspect {
         Method method = method(joinPoint);
         CerbosRowTrace rowTrace = method.getAnnotation(CerbosRowTrace.class);
         CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, joinPoint.getArgs());
-        Object principal = expressionEvaluator.value(rowTrace.principal(), context);
-        String action = String.valueOf(expressionEvaluator.value(rowTrace.action(), context));
+        Object principal = resolvePrincipal(rowTrace.principal(), context);
+        String action = resolveAction(rowTrace.action(), context);
         context.setVariable("principal", principal);
         context.setVariable("action", action);
 
@@ -56,13 +58,13 @@ public class CerbosDebugAspect {
         JsonNode plan = authorizationClient.planResources(principal, rowTrace.resourceKind(), action);
         CerbosSqlFilter filter = planToSqlConverter.convertNamed(rowTrace.resourceKind(), plan);
 
-        Object candidateRows = pageInfo(pageNum, pageSize, () -> expressionEvaluator.value(rowTrace.candidates(), context));
+        Object candidateRows = pageInfo(pageNum, pageSize, () -> traceValue(rowTrace.candidates(), rowTrace.resourceKind(), "findAll", context));
         Object sqlMatchedRows = filter.denied()
                 ? pageInfo(List.of())
-                : CerbosScopeContext.with(principal, action, () -> pageInfo(pageNum, pageSize, () -> expressionEvaluator.value(rowTrace.scopedRows(), context)));
+                : CerbosScopeContext.with(principal, action, () -> pageInfo(pageNum, pageSize, () -> traceValue(rowTrace.scopedRows(), rowTrace.resourceKind(), "find" + capitalized(rowTrace.resourceKind()) + "s", context)));
         Set<Object> sqlMatchedIds = filter.denied()
                 ? Set.of()
-                : CerbosScopeContext.with(principal, action, () -> ids(expressionEvaluator.value(rowTrace.scopedIds(), context)));
+                : CerbosScopeContext.with(principal, action, () -> ids(traceValue(rowTrace.scopedIds(), rowTrace.resourceKind(), "find" + capitalized(rowTrace.resourceKind()) + "Ids", context)));
         List<?> candidateList = rows(candidateRows);
         Map<String, String> effects = authorizationClient.checkResources(principal, candidateList, action);
         List<CerbosRowDecision> rowDecisions = candidateList.stream()
@@ -108,6 +110,41 @@ public class CerbosDebugAspect {
         return ((MethodSignature) joinPoint.getSignature()).getMethod();
     }
 
+    private Object resolvePrincipal(String expression, CerbosMethodExpressionEvaluator.Context context) {
+        if (!expression.isBlank()) {
+            return expressionEvaluator.value(expression, context);
+        }
+        Object principal = context.variable("principal");
+        if (principal != null) {
+            return principal;
+        }
+        Object userContext = context.variable("userContext");
+        if (userContext != null) {
+            return userContext;
+        }
+        Object userId = context.variable("userId");
+        if (userId != null && beanFactory.containsBean("userContextService")) {
+            return invoke(beanFactory.getBean("userContextService"), "load", userId);
+        }
+        throw new IllegalArgumentException("Cannot resolve Cerbos principal. Provide principal expression or a userId parameter with userContextService.load(...).");
+    }
+
+    private String resolveAction(String expression, CerbosMethodExpressionEvaluator.Context context) {
+        if (!expression.isBlank()) {
+            return String.valueOf(expressionEvaluator.value(expression, context));
+        }
+        Object action = context.variable("action");
+        return action == null ? "view" : String.valueOf(action);
+    }
+
+    private Object traceValue(String expression, String resourceKind, String defaultMethod, CerbosMethodExpressionEvaluator.Context context) {
+        if (!expression.isBlank()) {
+            return expressionEvaluator.value(expression, context);
+        }
+        Object mapper = beanFactory.getBean(resourceKind + "Mapper");
+        return invokeNoArg(mapper, defaultMethod);
+    }
+
     private int number(String expression, CerbosMethodExpressionEvaluator.Context context) {
         Object value = expressionEvaluator.value(expression, context);
         if (value instanceof Number number) {
@@ -144,6 +181,31 @@ public class CerbosDebugAspect {
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Cannot create PageInfo", exception);
         }
+    }
+
+    private Object invoke(Object target, String methodName, Object arg) {
+        for (Method method : target.getClass().getMethods()) {
+            if (method.getName().equals(methodName) && method.getParameterCount() == 1) {
+                try {
+                    return method.invoke(target, arg);
+                } catch (ReflectiveOperationException exception) {
+                    throw new IllegalStateException("Cannot invoke " + target.getClass().getName() + "." + methodName + "(...)", exception);
+                }
+            }
+        }
+        throw new IllegalArgumentException("Cannot find " + target.getClass().getName() + "." + methodName + "(...)");
+    }
+
+    private Object invokeNoArg(Object target, String methodName) {
+        try {
+            return target.getClass().getMethod(methodName).invoke(target);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Cannot invoke " + target.getClass().getName() + "." + methodName + "()", exception);
+        }
+    }
+
+    private String capitalized(String value) {
+        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
     }
 
     @SuppressWarnings("unchecked")

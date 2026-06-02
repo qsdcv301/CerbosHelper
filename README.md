@@ -20,7 +20,7 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v0.5.0'
+    implementation 'com.github.qsdcv301:CerbosHelper:v0.6.0'
 }
 ```
 
@@ -79,33 +79,30 @@ return CerbosScopeContext.with(principal, "view", () ->
                 .doSelectPageInfo(documentMapper::findDocuments));
 ```
 
-생성, 수정, 삭제처럼 단건 resource decision이 필요한 경우에는 `@CerbosCheck`를 붙인다.
+생성, 수정, 삭제처럼 단건 resource decision이 필요한 경우에는 `@CerbosCheck`를 붙인다. 메서드에 `userId` 파라미터가 있으면 `userContextService.load(userId)`를 자동으로 사용한다.
 
 ```java
-@CerbosCheck(
-        action = "create",
-        principal = "@userContextService.load(#userId)",
-        resource = "#document"
-)
+@CerbosCheck(action = "create")
 public Document createDocument(String userId, Document document) {
     documentMapper.insert(document);
     return documentMapper.findById(document.id()).orElseThrow();
 }
 ```
 
-수정처럼 기존 리소스와 변경 후 리소스를 모두 검사해야 하는 경우에는 annotation을 여러 개 붙인다.
+기존 row를 읽어서 검사해야 하면 `resourceKind`와 id 파라미터 이름만 적는다. 예를 들어 `resourceKind = "document"`이면 기본적으로 `documentMapper.findById(documentId)`를 호출한다.
 
 ```java
-@CerbosCheck(
-        action = "update",
-        principal = "@userContextService.load(#userId)",
-        resource = "@documentMapper.findById(#documentId).orElseThrow()"
-)
-@CerbosCheck(
-        action = "update",
-        principal = "@userContextService.load(#userId)",
-        resource = "#document.withId(#documentId)"
-)
+@CerbosCheck(action = "view", resourceKind = "document", id = "documentId")
+public Document findVisibleDocument(String userId, long documentId) {
+    return documentMapper.findById(documentId).orElseThrow();
+}
+```
+
+수정처럼 기존 리소스와 변경 후 리소스를 모두 검사해야 하는 경우에는 annotation을 여러 개 붙인다. `resource = "document"`는 메서드 파라미터 이름이고, `id = "documentId"`가 있으면 `withId(documentId)` 메서드가 있을 때 자동 적용한다.
+
+```java
+@CerbosCheck(action = "update", resourceKind = "document", id = "documentId")
+@CerbosCheck(action = "update", resource = "document", id = "documentId")
 public Document updateDocument(String userId, long documentId, Document document) {
     Document after = document.withId(documentId);
     documentMapper.update(after);
@@ -116,10 +113,7 @@ public Document updateDocument(String userId, long documentId, Document document
 Plan과 row trace를 화면이나 로그에서 확인해야 하면 디버그 전용 annotation을 붙인다. 서비스는 `CerbosAuthorizationClient`나 `CerbosPlanToSqlConverter`를 직접 주입하지 않는다.
 
 ```java
-@CerbosDebugPlan(
-        resourceKind = "document",
-        principal = "@userContextService.load(#userId)"
-)
+@CerbosDebugPlan(resourceKind = "document")
 public CerbosPlanDebugResult debugPlan(String userId, String action) {
     throw new UnsupportedOperationException("@CerbosDebugPlan should handle this method");
 }
@@ -128,17 +122,13 @@ public CerbosPlanDebugResult debugPlan(String userId, String action) {
 row trace는 후보 row, Cerbos scope 적용 row, scope 적용 id 조회식을 넘긴다. `PageHelper`가 있으면 `pageNum`, `pageSize` 파라미터를 사용해 `PageInfo` 형태로 응답한다.
 
 ```java
-@CerbosRowTrace(
-        resourceKind = "document",
-        principal = "@userContextService.load(#userId)",
-        candidates = "@documentMapper.findAll()",
-        scopedRows = "@documentMapper.findDocuments()",
-        scopedIds = "@documentMapper.findDocumentIds()"
-)
+@CerbosRowTrace(resourceKind = "document")
 public CerbosRowTraceResult traceRows(String userId, String action, int pageNum, int pageSize) {
     throw new UnsupportedOperationException("@CerbosRowTrace should handle this method");
 }
 ```
+
+`@`와 `#`는 필요한 경우에만 쓰는 SpEL 문법이다. `@beanName`은 Spring bean, `#paramName`은 메서드 파라미터를 뜻한다. 기본 convention으로 해결되는 경우에는 쓰지 않는다.
 
 ## 자동 처리되는 일
 
@@ -277,8 +267,8 @@ SQL 병합은 기존 `WHERE`와 top-level `ORDER BY`를 기준으로 처리한�
 git remote add origin https://github.com/qsdcv301/CerbosHelper.git
 git branch -M main
 git push -u origin main
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 새 기능을 JitPack 의존성으로 쓰려면 기능 커밋 후 새 태그를 발행하고, 사용하는 프로젝트의 의존성 버전을 그 태그로 올려야 한다.
