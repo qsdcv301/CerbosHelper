@@ -2,12 +2,12 @@ package io.cerboshelper.mybatis.autoconfigure;
 
 import io.cerboshelper.mybatis.CerbosAuthorizationClient;
 import io.cerboshelper.mybatis.CerbosCheckAspect;
-import io.cerboshelper.mybatis.CerbosDebugAspect;
 import io.cerboshelper.mybatis.CerbosHelperProperties;
 import io.cerboshelper.mybatis.CerbosHttpAuthorizationClient;
 import io.cerboshelper.mybatis.CerbosMyBatisScopeInterceptor;
 import io.cerboshelper.mybatis.CerbosPayloadMapper;
 import io.cerboshelper.mybatis.CerbosPlanToSqlConverter;
+import io.cerboshelper.mybatis.CerbosPrincipalResolver;
 import io.cerboshelper.mybatis.CerbosResource;
 import io.cerboshelper.mybatis.CerbosResourceColumnRegistry;
 import io.cerboshelper.mybatis.CerbosResourceColumns;
@@ -34,6 +34,7 @@ import org.aspectj.lang.annotation.Aspect;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @AutoConfiguration
 @EnableConfigurationProperties(CerbosHelperProperties.class)
@@ -52,18 +53,24 @@ public class CerbosHelperAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
+    CerbosPrincipalResolver cerbosPrincipalResolver() {
+        return Optional::empty;
+    }
+
+    @Bean
     @ConditionalOnClass(Aspect.class)
     @ConditionalOnBean(CerbosAuthorizationClient.class)
     @ConditionalOnMissingBean
-    CerbosCheckAspect cerbosCheckAspect(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory) {
-        return new CerbosCheckAspect(authorizationClient, beanFactory);
+    CerbosCheckAspect cerbosCheckAspect(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory, CerbosPrincipalResolver principalResolver) {
+        return new CerbosCheckAspect(authorizationClient, beanFactory, principalResolver);
     }
 
     @Bean
     @ConditionalOnClass(Aspect.class)
     @ConditionalOnMissingBean
-    CerbosScopeAspect cerbosScopeAspect(BeanFactory beanFactory) {
-        return new CerbosScopeAspect(beanFactory);
+    CerbosScopeAspect cerbosScopeAspect(BeanFactory beanFactory, CerbosPrincipalResolver principalResolver) {
+        return new CerbosScopeAspect(beanFactory, principalResolver);
     }
 
     @Bean
@@ -97,18 +104,10 @@ public class CerbosHelperAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnClass(Aspect.class)
     @ConditionalOnBean({CerbosAuthorizationClient.class, CerbosPlanToSqlConverter.class})
     @ConditionalOnMissingBean
-    CerbosDebugAspect cerbosDebugAspect(CerbosAuthorizationClient authorizationClient, CerbosPlanToSqlConverter converter, BeanFactory beanFactory) {
-        return new CerbosDebugAspect(authorizationClient, converter, beanFactory);
-    }
-
-    @Bean
-    @ConditionalOnBean({CerbosAuthorizationClient.class, CerbosPlanToSqlConverter.class})
-    @ConditionalOnMissingBean
-    CerbosMyBatisScopeInterceptor cerbosMyBatisScopeInterceptor(CerbosAuthorizationClient authorizationClient, CerbosPlanToSqlConverter converter) {
-        return new CerbosMyBatisScopeInterceptor(authorizationClient, converter);
+    CerbosMyBatisScopeInterceptor cerbosMyBatisScopeInterceptor(CerbosAuthorizationClient authorizationClient, CerbosPlanToSqlConverter converter, CerbosPrincipalResolver principalResolver) {
+        return new CerbosMyBatisScopeInterceptor(authorizationClient, converter, principalResolver);
     }
 
     @Bean

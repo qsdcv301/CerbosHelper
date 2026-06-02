@@ -3,6 +3,7 @@ package io.cerboshelper.mybatis;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -185,8 +186,11 @@ public class CerbosPlanToSqlConverter {
         }
 
         Object value = jsonValue(valueNode);
+        if (value == null) {
+            return new Operand("NULL", null, Collections.singletonList(null), List.of());
+        }
         String placeholder = context.addParam(value);
-        return new Operand(placeholder, null, List.of(value), List.of(placeholder));
+        return new Operand(placeholder, null, Collections.singletonList(value), List.of(placeholder));
     }
 
     private Object jsonValue(JsonNode node) {

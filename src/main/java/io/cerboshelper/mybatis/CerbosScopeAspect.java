@@ -10,9 +10,11 @@ import java.lang.reflect.Method;
 
 @Aspect
 public class CerbosScopeAspect {
+    private final CerbosPrincipalResolver principalResolver;
     private final CerbosMethodExpressionEvaluator expressionEvaluator;
 
-    public CerbosScopeAspect(BeanFactory beanFactory) {
+    public CerbosScopeAspect(BeanFactory beanFactory, CerbosPrincipalResolver principalResolver) {
+        this.principalResolver = principalResolver;
         this.expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
     }
 
@@ -21,7 +23,7 @@ public class CerbosScopeAspect {
         Method method = ((MethodSignature) joinPoint.getSignature()).getMethod();
         CerbosScope cerbosScope = method.getAnnotation(CerbosScope.class);
         CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, joinPoint.getArgs());
-        Object principal = expressionEvaluator.principal(cerbosScope.principal(), context);
+        Object principal = expressionEvaluator.principal(cerbosScope.principal(), context, principalResolver);
         return CerbosScopeContext.with(principal, cerbosScope.action(), () -> proceed(joinPoint));
     }
 

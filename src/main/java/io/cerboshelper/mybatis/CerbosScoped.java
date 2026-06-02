@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface CerbosScoped {
-    String resourceKind();
+    String resourceKind() default "";
 
     String action() default "";
 }

@@ -19,4 +19,8 @@ public @interface CerbosCheck {
     String resourceKind() default "";
 
     String id() default "";
+
+    String mapper() default "";
+
+    String finder() default "findById";
 }
