@@ -2,7 +2,7 @@
 
 `CerbosHelper`는 Spring Boot + MyBatis 프로젝트에서 Cerbos 권한 범위를 PageHelper처럼 자연스럽게 적용하기 위한 라이브러리다.
 
-목표는 애플리케이션 개발자가 Cerbos 요청 JSON, Plan SQL 변환, MyBatis 인터셉터 순서, resource column registry를 직접 조립하지 않게 하는 것이다. 개발자는 최소 설정, 리소스 annotation, Mapper annotation, 서비스 호출 구간만 신경 쓰면 된다.
+애플리케이션 개발자는 Cerbos 요청 JSON, Plan SQL 변환, MyBatis 인터셉터 순서, resource column registry를 직접 조립하지 않는다. 기본 사용 흐름은 설정, 리소스 annotation, Mapper annotation, 서비스 annotation이다.
 
 ## 사용 예시
 
@@ -20,7 +20,7 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v0.3.0'
+    implementation 'com.github.qsdcv301:CerbosHelper:v0.4.0'
 }
 ```
 
@@ -79,11 +79,37 @@ return CerbosScopeContext.with(principal, "view", () ->
                 .doSelectPageInfo(documentMapper::findDocuments));
 ```
 
-생성, 수정, 삭제처럼 단건 resource decision이 필요한 경우에는 자동 제공되는 `CerbosAuthorizationClient`를 사용한다.
+생성, 수정, 삭제처럼 단건 resource decision이 필요한 경우에는 `@CerbosCheck`를 붙인다.
 
 ```java
-if (!cerbosAuthorizationClient.isAllowed(principal, document, "update")) {
-    throw new SecurityException("Cerbos denied update");
+@CerbosCheck(
+        action = "create",
+        principal = "@userContextService.load(#userId)",
+        resource = "#document"
+)
+public Document createDocument(String userId, Document document) {
+    documentMapper.insert(document);
+    return documentMapper.findById(document.id()).orElseThrow();
+}
+```
+
+수정처럼 기존 리소스와 변경 후 리소스를 모두 검사해야 하는 경우에는 annotation을 여러 개 붙인다.
+
+```java
+@CerbosCheck(
+        action = "update",
+        principal = "@userContextService.load(#userId)",
+        resource = "@documentMapper.findById(#documentId).orElseThrow()"
+)
+@CerbosCheck(
+        action = "update",
+        principal = "@userContextService.load(#userId)",
+        resource = "#document.withId(#documentId)"
+)
+public Document updateDocument(String userId, long documentId, Document document) {
+    Document after = document.withId(documentId);
+    documentMapper.update(after);
+    return documentMapper.findById(documentId).orElseThrow();
 }
 ```
 
@@ -98,6 +124,7 @@ if (!cerbosAuthorizationClient.isAllowed(principal, document, "update")) {
 - Cerbos `PlanResources` 호출
 - Cerbos `CheckResources` 호출
 - principal/resource 객체를 Cerbos 요청 payload로 변환
+- `@CerbosCheck` 메서드 권한 검사
 - Cerbos Plan을 SQL `WHERE` 조건으로 변환
 - MyBatis `SELECT` SQL에 조건 주입
 - PageHelper와 충돌하지 않도록 MyBatis interceptor 순서 정리
@@ -199,30 +226,18 @@ cerboshelper.mybatis.interceptor-order [PageInterceptor, CerbosMyBatisScopeInter
 
 SQL 병합은 기존 `WHERE`와 top-level `ORDER BY`를 기준으로 처리한다. 복잡한 nested subquery, vendor-specific SQL, 컬럼 대 컬럼 비교는 적용 전 별도 검증이 필요하다.
 
-## 아직 개발자가 신경 써야 하는 부분
+## 개발자가 준비할 것
 
-현재 남아 있는 명시 작업은 다음 정도다.
+기본 경로에서 준비할 항목은 다음 정도다.
 
 - Cerbos 서버 주소 설정
 - principal 객체가 정책에 필요한 attribute를 갖도록 설계
 - resource 객체에 `@CerbosResource` 부여
 - 보호할 Mapper `SELECT` 메서드에 `@CerbosScoped` 부여
 - 조회 호출을 `CerbosScopeContext.with(...)`로 감싸기
-- create/update/delete에서 `CerbosAuthorizationClient.isAllowed(...)` 호출
+- create/update/delete에서 `@CerbosCheck` 부여
 
 즉 수동 `CerbosClient`, 수동 `resourcePayload`, 수동 `principalPayload`, 수동 column registry는 기본 경로에서 필요하지 않다.
-
-## 다음 목표: 0.4.0
-
-0.4.0의 목표는 디버그 흐름도 annotation 기반으로 끌어올리는 것이다. 현재 demo의 row trace는 후보 row, Plan SQL 매칭 row, CheckResources 결과를 비교하므로 정책 디버깅 가치가 크다. 이 가치는 유지하되, 서비스 코드가 `CerbosPlanToSqlConverter`, `CerbosSqlFilter`, `filter.denied()`를 직접 알지 않도록 라이브러리 내부로 옮기는 것이 목표다.
-
-예상 방향은 다음과 같다.
-
-- trace 대상 Mapper를 annotation으로 지정
-- 후보 row 조회와 scoped row 조회를 라이브러리가 실행
-- Plan SQL, params, denied 여부, CheckResources 결과를 표준 trace response로 조립
-- 개발자는 debug endpoint에서 `cerbosTrace.trace(...)` 수준만 호출
-- 일반 조회 코드는 PageHelper처럼 `@CerbosScoped`와 `CerbosScopeContext.with(...)`만 사용
 
 ## 릴리스
 
@@ -232,8 +247,8 @@ SQL 병합은 기존 `WHERE`와 top-level `ORDER BY`를 기준으로 처리한�
 git remote add origin https://github.com/qsdcv301/CerbosHelper.git
 git branch -M main
 git push -u origin main
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 새 기능을 JitPack 의존성으로 쓰려면 기능 커밋 후 새 태그를 발행하고, 사용하는 프로젝트의 의존성 버전을 그 태그로 올려야 한다.

@@ -1,6 +1,7 @@
 package io.cerboshelper.mybatis.autoconfigure;
 
 import io.cerboshelper.mybatis.CerbosAuthorizationClient;
+import io.cerboshelper.mybatis.CerbosCheckAspect;
 import io.cerboshelper.mybatis.CerbosHelperProperties;
 import io.cerboshelper.mybatis.CerbosHttpAuthorizationClient;
 import io.cerboshelper.mybatis.CerbosMyBatisScopeInterceptor;
@@ -27,6 +28,7 @@ import org.springframework.context.annotation.ClassPathScanningCandidateComponen
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.web.client.RestClient;
+import org.aspectj.lang.annotation.Aspect;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -46,6 +48,14 @@ public class CerbosHelperAutoConfiguration {
     @ConditionalOnMissingBean(CerbosPlanProvider.class)
     CerbosAuthorizationClient cerbosAuthorizationClient(CerbosHelperProperties properties, CerbosPayloadMapper payloadMapper) {
         return new CerbosHttpAuthorizationClient(properties, payloadMapper);
+    }
+
+    @Bean
+    @ConditionalOnClass(Aspect.class)
+    @ConditionalOnBean(CerbosAuthorizationClient.class)
+    @ConditionalOnMissingBean
+    CerbosCheckAspect cerbosCheckAspect(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory) {
+        return new CerbosCheckAspect(authorizationClient, beanFactory);
     }
 
     @Bean

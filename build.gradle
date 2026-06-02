@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'com.github.qsdcv301'
-version = '0.3.0'
+version = '0.4.0'
 
 java {
     toolchain {
@@ -17,8 +17,11 @@ java {
 dependencies {
     api 'org.mybatis:mybatis:3.5.17'
     implementation 'org.springframework.boot:spring-boot-autoconfigure:3.3.6'
+    implementation 'org.springframework:spring-aop:6.1.15'
     implementation 'org.springframework:spring-context:6.1.15'
+    implementation 'org.springframework:spring-expression:6.1.15'
     implementation 'org.springframework:spring-web:6.1.15'
+    implementation 'org.aspectj:aspectjweaver:1.9.22.1'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.3'
     implementation 'org.slf4j:slf4j-api:2.0.16'
 }
