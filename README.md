@@ -22,7 +22,7 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v0.7.0'
+    implementation 'com.github.qsdcv301:CerbosHelper:v0.8.0'
 }
 ```
 
@@ -106,14 +106,13 @@ Mapper SQL은 가능하면 resource kind와 같은 alias를 쓴다.
 </select>
 ```
 
-서비스 조회 구간을 `CerbosScopeContext.with(...)`로 감싼다.
+서비스 조회 메서드에 `@CerbosScope`를 붙인다. 기본 규약은 메서드 파라미터 `principal`을 현재 사용자 객체로 사용하는 것이다.
 
 ```java
-public PageInfo<Document> findVisibleDocuments(String userId, int pageNum, int pageSize) {
-    UserContext principal = userContextService.load(userId);
-    return CerbosScopeContext.with(principal, "view", () ->
-            PageHelper.startPage(pageNum, pageSize)
-                    .doSelectPageInfo(documentMapper::findDocuments));
+@CerbosScope(action = "view")
+public PageInfo<Document> findVisibleDocuments(CurrentUser principal, int pageNum, int pageSize) {
+    return PageHelper.startPage(pageNum, pageSize)
+            .doSelectPageInfo(documentMapper::findDocuments);
 }
 ```
 
@@ -131,7 +130,7 @@ cerboshelper.mybatis.interceptor-order [PageInterceptor, CerbosMyBatisScopeInter
 
 ```java
 @CerbosCheck(action = "create")
-public Document createDocument(String userId, Document document) {
+public Document createDocument(CurrentUser principal, Document document) {
     documentMapper.insert(document);
     return documentMapper.findById(document.id()).orElseThrow();
 }
@@ -141,7 +140,7 @@ public Document createDocument(String userId, Document document) {
 
 ```java
 @CerbosCheck(action = "view", resourceKind = "document", id = "documentId")
-public Document findVisibleDocument(String userId, long documentId) {
+public Document findVisibleDocument(CurrentUser principal, long documentId) {
     return documentMapper.findById(documentId).orElseThrow();
 }
 ```
@@ -159,7 +158,7 @@ id = "documentId"
 ```java
 @CerbosCheck(action = "update", resourceKind = "document", id = "documentId")
 @CerbosCheck(action = "update", resource = "document", id = "documentId")
-public Document updateDocument(String userId, long documentId, Document document) {
+public Document updateDocument(CurrentUser principal, long documentId, Document document) {
     Document after = document.withId(documentId);
     documentMapper.update(after);
     return documentMapper.findById(documentId).orElseThrow();
@@ -172,36 +171,41 @@ public Document updateDocument(String userId, long documentId, Document document
 
 ```java
 @CerbosCheck(action = "delete", resourceKind = "document", id = "documentId")
-public void deleteDocument(String userId, long documentId) {
+public void deleteDocument(CurrentUser principal, long documentId) {
     documentMapper.delete(documentId);
 }
 ```
 
 ## 5. Principal Convention
 
-기본 convention은 다음 순서로 principal을 찾는다.
-
-1. 메서드 파라미터 `principal`
-2. 메서드 파라미터 `userContext`
-3. 메서드 파라미터 `userId` + Spring bean `userContextService.load(userId)`
+기본 convention은 메서드 파라미터 `principal` 하나만 찾는다. `userId`, `accountId`, `memberNo` 같은 애플리케이션별 식별자를 현재 사용자 객체로 바꾸는 일은 각 애플리케이션의 controller, argument resolver, security context resolver 같은 경계에서 처리한다.
 
 예를 들어 다음 메서드는 별도 principal 설정이 필요 없다.
 
 ```java
 @CerbosCheck(action = "create")
-public Document createDocument(String userId, Document document) {
+public Document createDocument(CurrentUser principal, Document document) {
     ...
 }
 ```
 
-principal 객체는 `id` 또는 `userId` 필드를 principal id로 사용한다. 나머지 필드는 `request.principal.attr.*`로 전달된다.
+principal 객체는 `id` 필드를 principal id로 사용한다. 필드명이 다르면 `@CerbosAttribute("id")`로 매핑한다. 나머지 필드는 `request.principal.attr.*`로 전달된다.
 
 ```java
-public record UserContext(
-        String userId,
+public record CurrentUser(
+        String id,
         List<String> permissions,
         List<Long> companyIds,
         List<Long> organizationIds
+) {
+}
+```
+
+```java
+public record CurrentUser(
+        @CerbosAttribute("id")
+        String accountNo,
+        List<String> permissions
 ) {
 }
 ```
@@ -220,7 +224,7 @@ Plan 원문, SQL 변환 결과, parameter, denied 여부를 보고 싶으면 `@C
 
 ```java
 @CerbosDebugPlan(resourceKind = "document")
-public CerbosPlanDebugResult debugPlan(String userId, String action) {
+public CerbosPlanDebugResult debugPlan(CurrentUser principal, String action) {
     throw new UnsupportedOperationException("@CerbosDebugPlan should handle this method");
 }
 ```
@@ -229,7 +233,7 @@ public CerbosPlanDebugResult debugPlan(String userId, String action) {
 
 ```java
 @CerbosRowTrace(resourceKind = "document")
-public CerbosRowTraceResult traceRows(String userId, String action, int pageNum, int pageSize) {
+public CerbosRowTraceResult traceRows(CurrentUser principal, String action, int pageNum, int pageSize) {
     throw new UnsupportedOperationException("@CerbosRowTrace should handle this method");
 }
 ```
@@ -267,12 +271,12 @@ documentMapper.findDocumentIds()
 ```java
 @CerbosCheck(
         action = "view",
-        principal = "@userContextService.load(#userId)",
+        principal = "#currentUser",
         resource = "@documentMapper.findById(#documentId).orElseThrow()"
 )
 ```
 
-이 방식은 복잡한 예외 케이스용이다. 일반 CRUD에서는 convention 방식을 권장한다.
+이 방식은 복잡한 예외 케이스용이다. 일반 CRUD에서는 파라미터 이름을 `principal`로 두는 convention 방식을 권장한다.
 
 ## 8. 지원하는 Plan 표현
 
@@ -311,8 +315,8 @@ SQL 병합은 기존 `WHERE`와 top-level `ORDER BY`를 기준으로 처리한�
 GitHub/JitPack 릴리스는 태그 기준이다.
 
 ```bash
-git tag v0.7.0
-git push origin v0.7.0
+git tag v0.8.0
+git push origin v0.8.0
 ```
 
 새 기능을 의존성으로 쓰려면 사용하는 프로젝트의 버전을 새 태그로 올린다.

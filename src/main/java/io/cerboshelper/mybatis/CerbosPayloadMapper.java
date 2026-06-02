@@ -19,7 +19,7 @@ public class CerbosPayloadMapper {
     public Map<String, Object> principalPayload(Object principal) {
         Map<String, Object> attr = attributes(principal);
         return Map.of(
-                "id", String.valueOf(requireAny(attr, "id", "userId")),
+                "id", String.valueOf(requireAny(attr, "id")),
                 "policyVersion", properties.getPolicyVersion(),
                 "roles", properties.getPrincipalRoles(),
                 "attr", attr
@@ -55,6 +55,7 @@ public class CerbosPayloadMapper {
                 }
                 attributes.put(attributeName(component.getName(), attribute), invoke(component.getAccessor(), value));
             }
+            addAnnotatedMethods(value, attributes);
             return attributes;
         }
 
@@ -73,14 +74,18 @@ public class CerbosPayloadMapper {
                 throw new IllegalStateException("Cannot read Cerbos attribute field: " + field.getName(), exception);
             }
         }
-        for (Method method : type.getMethods()) {
+        addAnnotatedMethods(value, attributes);
+        return attributes;
+    }
+
+    private void addAnnotatedMethods(Object value, Map<String, Object> attributes) {
+        for (Method method : value.getClass().getMethods()) {
             CerbosAttribute attribute = method.getAnnotation(CerbosAttribute.class);
             if (attribute == null || attribute.ignore()) {
                 continue;
             }
             attributes.put(attributeName(methodNameToProperty(method.getName()), attribute), invoke(method, value));
         }
-        return attributes;
     }
 
     private String attributeName(String defaultName, CerbosAttribute attribute) {

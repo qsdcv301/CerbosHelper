@@ -39,6 +39,17 @@ final class CerbosMethodExpressionEvaluator {
         return expressionParser.parseExpression(expression).getValue(context.evaluationContext);
     }
 
+    Object principal(String expression, Context context) {
+        if (!expression.isBlank()) {
+            return value(expression, context);
+        }
+        Object principal = context.variable("principal");
+        if (principal != null) {
+            return principal;
+        }
+        throw new IllegalArgumentException("Cannot resolve Cerbos principal. Provide a parameter named principal or set principal expression explicitly.");
+    }
+
     static final class Context {
         private final StandardEvaluationContext evaluationContext;
 

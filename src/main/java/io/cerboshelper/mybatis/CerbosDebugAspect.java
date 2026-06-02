@@ -36,7 +36,7 @@ public class CerbosDebugAspect {
         Method method = method(joinPoint);
         CerbosDebugPlan debugPlan = method.getAnnotation(CerbosDebugPlan.class);
         CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, joinPoint.getArgs());
-        Object principal = resolvePrincipal(debugPlan.principal(), context);
+        Object principal = expressionEvaluator.principal(debugPlan.principal(), context);
         String action = resolveAction(debugPlan.action(), context);
         JsonNode plan = authorizationClient.planResources(principal, debugPlan.resourceKind(), action);
         CerbosSqlFilter filter = planToSqlConverter.convertNamed(debugPlan.resourceKind(), plan);
@@ -48,7 +48,7 @@ public class CerbosDebugAspect {
         Method method = method(joinPoint);
         CerbosRowTrace rowTrace = method.getAnnotation(CerbosRowTrace.class);
         CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, joinPoint.getArgs());
-        Object principal = resolvePrincipal(rowTrace.principal(), context);
+        Object principal = expressionEvaluator.principal(rowTrace.principal(), context);
         String action = resolveAction(rowTrace.action(), context);
         context.setVariable("principal", principal);
         context.setVariable("action", action);
@@ -108,25 +108,6 @@ public class CerbosDebugAspect {
 
     private Method method(ProceedingJoinPoint joinPoint) {
         return ((MethodSignature) joinPoint.getSignature()).getMethod();
-    }
-
-    private Object resolvePrincipal(String expression, CerbosMethodExpressionEvaluator.Context context) {
-        if (!expression.isBlank()) {
-            return expressionEvaluator.value(expression, context);
-        }
-        Object principal = context.variable("principal");
-        if (principal != null) {
-            return principal;
-        }
-        Object userContext = context.variable("userContext");
-        if (userContext != null) {
-            return userContext;
-        }
-        Object userId = context.variable("userId");
-        if (userId != null && beanFactory.containsBean("userContextService")) {
-            return invoke(beanFactory.getBean("userContextService"), "load", userId);
-        }
-        throw new IllegalArgumentException("Cannot resolve Cerbos principal. Provide principal expression or a userId parameter with userContextService.load(...).");
     }
 
     private String resolveAction(String expression, CerbosMethodExpressionEvaluator.Context context) {

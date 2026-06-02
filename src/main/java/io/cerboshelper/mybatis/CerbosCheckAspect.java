@@ -27,32 +27,13 @@ public class CerbosCheckAspect {
         CerbosCheck[] checks = method.getAnnotationsByType(CerbosCheck.class);
         CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, joinPoint.getArgs());
         for (CerbosCheck check : checks) {
-            Object principal = resolvePrincipal(check, context);
+            Object principal = expressionEvaluator.principal(check.principal(), context);
             Object resource = resolveResource(check, method, joinPoint.getArgs(), context);
             if (!authorizationClient.isAllowed(principal, resource, check.action())) {
                 throw new SecurityException("Cerbos denied " + check.action());
             }
         }
         return joinPoint.proceed();
-    }
-
-    private Object resolvePrincipal(CerbosCheck check, CerbosMethodExpressionEvaluator.Context context) {
-        if (!check.principal().isBlank()) {
-            return expressionEvaluator.value(check.principal(), context);
-        }
-        Object principal = context.variable("principal");
-        if (principal != null) {
-            return principal;
-        }
-        Object userContext = context.variable("userContext");
-        if (userContext != null) {
-            return userContext;
-        }
-        Object userId = context.variable("userId");
-        if (userId != null && beanFactory.containsBean("userContextService")) {
-            return invoke(beanFactory.getBean("userContextService"), "load", userId);
-        }
-        throw new IllegalArgumentException("Cannot resolve Cerbos principal. Provide principal expression or a userId parameter with userContextService.load(...).");
     }
 
     private Object resolveResource(CerbosCheck check, Method method, Object[] args, CerbosMethodExpressionEvaluator.Context context) {

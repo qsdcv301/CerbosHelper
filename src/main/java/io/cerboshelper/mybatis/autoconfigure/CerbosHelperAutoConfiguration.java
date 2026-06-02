@@ -11,6 +11,7 @@ import io.cerboshelper.mybatis.CerbosPlanToSqlConverter;
 import io.cerboshelper.mybatis.CerbosResource;
 import io.cerboshelper.mybatis.CerbosResourceColumnRegistry;
 import io.cerboshelper.mybatis.CerbosResourceColumns;
+import io.cerboshelper.mybatis.CerbosScopeAspect;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.apache.ibatis.plugin.Interceptor;
@@ -56,6 +57,13 @@ public class CerbosHelperAutoConfiguration {
     @ConditionalOnMissingBean
     CerbosCheckAspect cerbosCheckAspect(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory) {
         return new CerbosCheckAspect(authorizationClient, beanFactory);
+    }
+
+    @Bean
+    @ConditionalOnClass(Aspect.class)
+    @ConditionalOnMissingBean
+    CerbosScopeAspect cerbosScopeAspect(BeanFactory beanFactory) {
+        return new CerbosScopeAspect(beanFactory);
     }
 
     @Bean
