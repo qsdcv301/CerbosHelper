@@ -77,8 +77,8 @@ Recommended GitHub flow:
 git remote add origin https://github.com/qsdcv301/CerbosHelper.git
 git branch -M main
 git push -u origin main
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 Consumers add JitPack at the end of their repositories and use the GitHub repo coordinates:
