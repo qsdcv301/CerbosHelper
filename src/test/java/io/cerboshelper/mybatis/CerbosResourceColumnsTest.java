@@ -1,5 +1,9 @@
 package io.cerboshelper.mybatis;
 
+import io.cerboshelper.mybatis.annotation.CerbosAttribute;
+import io.cerboshelper.mybatis.annotation.CerbosResource;
+import io.cerboshelper.mybatis.sql.CerbosResourceColumnRegistry;
+import io.cerboshelper.mybatis.sql.CerbosResourceColumns;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

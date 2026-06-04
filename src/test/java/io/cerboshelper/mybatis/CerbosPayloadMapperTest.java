@@ -1,5 +1,8 @@
 package io.cerboshelper.mybatis;
 
+import io.cerboshelper.mybatis.auth.CerbosHelperProperties;
+import io.cerboshelper.mybatis.auth.CerbosPayloadMapper;
+import io.cerboshelper.mybatis.auth.CerbosPrincipalEnvelope;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

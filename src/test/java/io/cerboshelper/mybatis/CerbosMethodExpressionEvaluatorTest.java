@@ -1,5 +1,6 @@
 package io.cerboshelper.mybatis;
 
+import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 

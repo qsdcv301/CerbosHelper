@@ -1,5 +1,7 @@
 package io.cerboshelper.mybatis;
 
+import io.cerboshelper.mybatis.check.CerbosAccessDeniedHandler;
+import io.cerboshelper.mybatis.check.CerbosDeniedDecision;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;

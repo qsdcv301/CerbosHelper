@@ -2,6 +2,10 @@ package io.cerboshelper.mybatis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.cerboshelper.mybatis.annotation.CerbosResource;
+import io.cerboshelper.mybatis.sql.CerbosPlanToSqlConverter;
+import io.cerboshelper.mybatis.sql.CerbosResourceColumns;
+import io.cerboshelper.mybatis.sql.CerbosSqlFilter;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,9 +56,9 @@ class CerbosPlanToSqlConverterTest {
                 }
                 """));
 
-        assertEquals("(document.status = #{params.p0}) AND (document.sensitivity_level <= #{params.p1})", filter.whereSql());
-        assertEquals("ACTIVE", filter.namedParams().get("p0"));
-        assertEquals(2L, filter.namedParams().get("p1"));
+        assertEquals("(document.status = #{params.cp0}) AND (document.sensitivity_level <= #{params.cp1})", filter.whereSql());
+        assertEquals("ACTIVE", filter.namedParams().get("cp0"));
+        assertEquals(2L, filter.namedParams().get("cp1"));
     }
 
     @Test

@@ -26,6 +26,9 @@ CerbosHelper는 다음 책임을 나눠 가진다.
 | 목록 권한 범위 조회 | `@CerbosScoped` + MyBatis interceptor |
 | Cerbos Plan -> SQL WHERE | `CerbosPlanToSqlConverter` |
 | 단건/쓰기 권한 검사 | `@CerbosCheck` + AOP |
+| 단건/쓰기 resource 해석 | `CerbosResourceResolver` |
+| Mapper SQL predicate 삽입 | `CerbosSqlPredicateInjector` |
+| MyBatis interceptor 순서 조정 | `CerbosMyBatisInterceptorOrderStrategy` |
 | deny 예외 변환 | `CerbosAccessDeniedHandler` |
 | PageHelper 호환 | interceptor order verifier |
 
@@ -70,11 +73,11 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.3'
+    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.6'
 }
 ```
 
-CerbosHelper `v1.0.3`는 내부적으로 다음 Cerbos SDK 계열 의존성을 사용한다.
+CerbosHelper `v1.0.6`는 내부적으로 다음 Cerbos SDK 계열 의존성을 사용한다.
 
 ```groovy
 implementation 'dev.cerbos:cerbos-sdk-java:0.18.0'
@@ -650,9 +653,9 @@ public Document updateDocument(long documentId, Document document) {
 - `KIND_ALWAYS_DENIED`
 - `KIND_CONDITIONAL`
 
-SQL 병합은 기존 `WHERE`와 top-level `ORDER BY`를 기준으로 처리한다. 현재 권장 SQL 형태는 PostgreSQL의 일반적인 단일 `SELECT ... FROM ... WHERE ... ORDER BY ...` 조회다.
+기본 SQL predicate 삽입은 `DefaultCerbosSqlPredicateInjector`가 담당한다. 이 기본 구현은 기존 `WHERE`와 top-level `ORDER BY`를 기준으로 처리한다. 현재 기본 구현의 권장 SQL 형태는 PostgreSQL의 일반적인 단일 `SELECT ... FROM ... WHERE ... ORDER BY ...` 조회다.
 
-다음 SQL은 적용 전에 별도 검증하거나 Mapper에서 명시적으로 분리하는 것을 권장한다.
+다음 SQL은 기본 injector에 바로 맡기기보다 Mapper를 분리하거나 custom `CerbosSqlPredicateInjector` Bean으로 처리하는 것을 권장한다.
 
 - `WITH`
 - `UNION`
@@ -672,12 +675,15 @@ CerbosHelper는 안전하지 않은 plan을 넓은 조회로 바꾸지 않는다
 - `CerbosAuthorizationClient`
 - 공식 `CerbosBlockingClient`
 - `CerbosPlanToSqlConverter`
+- `CerbosResourceResolver`
+- `CerbosSqlPredicateInjector`
+- `CerbosMyBatisInterceptorOrderStrategy`
 - Cerbos 요청 JSON
 - principal/resource payload mapper
 - resource column registry
 - MyBatis interceptor 순서 조정
 
-CerbosHelper 내부 통신은 공식 Cerbos Java SDK를 사용한다. 개발자는 SDK client를 직접 주입하지 않아도 되고, 필요한 경우 `CerbosAuthorizationClient` Bean을 직접 등록해 기본 SDK 구현을 대체할 수 있다.
+CerbosHelper 내부 통신은 공식 Cerbos Java SDK를 사용한다. 개발자는 SDK client를 직접 주입하지 않아도 된다. 특정 프로젝트의 인증, resource lookup, SQL 병합 방식이 다르면 각 전략 Bean을 직접 등록해 기본 구현을 대체한다.
 
 기본 구현은 `CerbosSdkAuthorizationClient`다. 직접 대체가 필요한 예시는 다음과 같다.
 
@@ -687,6 +693,54 @@ CerbosHelper 내부 통신은 공식 Cerbos Java SDK를 사용한다. 개발자�
 - 테스트에서 PDP 없이 결정 결과를 고정하고 싶은 경우
 
 이 경우 애플리케이션에서 `CerbosAuthorizationClient` Bean을 직접 등록하면 auto configuration의 기본 SDK client는 생성되지 않는다.
+
+`@CerbosCheck`의 resource 해석 규칙을 완전히 바꾸려면 `CerbosResourceResolver` Bean을 등록한다. 기본 구현인 `DefaultCerbosResourceResolver`는 `@CerbosResource` 인자, `resource` SpEL, id parameter, mapper/finder, `withId(...)` convention을 지원한다. 이 convention을 쓰지 않는 프로젝트는 resolver를 직접 구현하면 된다.
+
+```java
+@Bean
+CerbosResourceResolver cerbosResourceResolver(DocumentLookupService lookupService) {
+    return request -> {
+        Object id = request.context().variable("documentId");
+        if (id == null) {
+            return List.of();
+        }
+        return List.of(lookupService.findResourceSnapshot(id));
+    };
+}
+```
+
+원본 SQL에 Cerbos predicate를 삽입하는 방식을 바꾸려면 `CerbosSqlPredicateInjector` Bean을 등록한다. 기본 구현은 단일 `SELECT`의 top-level `WHERE`/`ORDER BY`에 삽입한다. `WITH`, `UNION`, aggregate query처럼 SQL shape가 다른 경우에는 이 전략을 프로젝트 SQL 규칙에 맞게 구현한다.
+
+```java
+@Bean
+CerbosSqlPredicateInjector cerbosSqlPredicateInjector() {
+    return new WrappingCerbosSqlPredicateInjector();
+}
+
+final class WrappingCerbosSqlPredicateInjector implements CerbosSqlPredicateInjector {
+    @Override
+    public CerbosSqlInjectionResult inject(String sql, String predicate) {
+        return new CerbosSqlInjectionResult(
+                "SELECT scoped.* FROM (" + sql + ") scoped WHERE (" + predicate + ")",
+                countOriginalPlaceholders(sql)
+        );
+    }
+
+    private int countOriginalPlaceholders(String sql) {
+        int count = 0;
+        for (int index = 0; index < sql.length(); index++) {
+            if (sql.charAt(index) == '?') {
+                count++;
+            }
+        }
+        return count;
+    }
+}
+```
+
+위 derived-table 방식은 outer predicate가 참조할 column alias가 반드시 outer query에 노출되어야 한다. 예를 들어 `@CerbosResource(sqlAlias = "scoped")`를 쓰면 inner select가 `company_id`, `owner_user_id` 같은 resource attr column을 projection해야 한다.
+
+상세한 extension point 설계는 `docs/EXTENSION_POINTS_KO.md`, 고급 SQL 구현 방식은 `docs/ADVANCED_SQL_KO.md`에 따로 정리되어 있다.
 
 ## 11. Deny 예외 커스터마이징
 
@@ -754,77 +808,51 @@ handler는 `CerbosDeniedDecision`을 받는다.
 - Cerbos plan의 attr 이름이 `@CerbosResource` / `@CerbosAttribute` 매핑과 맞는지
 - PageHelper와 함께 쓸 때 기동 로그에 `CerbosMyBatisScopeInterceptor`가 마지막에 있는지
 
-## 13. 1.0.0에서 1.0.1로 올릴 때
+## 13. 확장 포인트 선택 기준
 
-`1.0.1`은 외부 annotation API를 유지하면서 내부 Cerbos 통신을 직접 REST 호출에서 공식 Java SDK/gRPC로 바꾼 패치 릴리스다.
+기본 CRUD convention으로 충분하면 annotation만 사용한다. 프로젝트 구조가 다르면 annotation option을 계속 늘리기보다 전략 Bean을 교체한다.
 
-애플리케이션 코드에서 그대로 유지되는 것:
+| 상황 | 우선 선택 | 이유 |
+|------|-----------|------|
+| 현재 사용자 principal 구조가 단순함 | `CerbosPrincipalResolver` | 애플리케이션 인증 context만 연결하면 된다. |
+| principal roles/attr/policyVersion을 명시해야 함 | `CerbosPrincipalEnvelope` | custom payload mapper 없이 Cerbos principal payload를 고정할 수 있다. |
+| principal/resource payload 규칙 자체가 다름 | `CerbosPayloadMapper` Bean | attr 추출, null 처리, roles 정책을 프로젝트 기준으로 바꾼다. |
+| 단건/쓰기 resource lookup이 mapper convention과 다름 | `CerbosResourceResolver` Bean | `findById`, mapper 이름, `withId(...)` convention을 쓰지 않아도 된다. |
+| SQL alias나 column allowlist를 직접 통제해야 함 | `CerbosResourceColumnRegistry` Bean | 정책 attr과 SQL column 매핑을 명시적으로 고정한다. |
+| `WITH`, `UNION`, aggregate SQL에 predicate를 넣어야 함 | `CerbosSqlPredicateInjector` Bean | 원본 SQL shape별로 predicate 삽입 위치와 parameter index를 직접 계산한다. |
+| deny 예외가 프로젝트 표준과 다름 | `CerbosAccessDeniedHandler` Bean | `SecurityException` 대신 API 표준 예외로 변환한다. |
+| Cerbos SDK channel/gateway/mTLS를 직접 제어해야 함 | `CerbosAuthorizationClient` Bean | 기본 SDK client를 조직 표준 client로 대체한다. |
 
-- `@CerbosScoped`
-- `@CerbosCheck`
-- `@CerbosScope`
-- `@CerbosResource`
-- `@CerbosAttribute`
-- `CerbosPrincipalResolver`
-- `CerbosAuthorizationClient` 확장 지점
+## 14. 보완 가능 목록
 
-확인하거나 바꿔야 하는 것:
+현재 파일들은 모두 실제 runtime 경로에 연결되어 있고 즉시 제거할 대상은 없다. 다만 더 범용적인 라이브러리로 키우려면 아래 개선을 순서대로 고려할 수 있다.
 
-- Cerbos PDP의 gRPC 포트 `3593`이 애플리케이션에서 접근 가능한지 확인한다.
-- 신규 설정은 `cerboshelper.target`을 사용한다.
-- 기존에 `cerboshelper.base-url=http://cerbos:3592`만 쓰던 프로젝트는 자동으로 `cerbos:3593` target을 유추하지만, 명시적으로 `target`을 추가하는 것을 권장한다.
-- 이미 gRPC/protobuf를 쓰는 프로젝트는 dependency tree에서 effective version 충돌이 없는지 확인한다.
+### 우선순위 높음
 
-권장 마이그레이션 예시는 다음과 같다.
+| 보완 항목 | 현재 상태 | 개선 방향 |
+|-----------|-----------|-----------|
+| MyBatis interceptor order 조정 추상화 | auto-configuration이 MyBatis 내부 field reflection으로 interceptor 순서를 재배치한다. | `CerbosMyBatisInterceptorOrderStrategy` 같은 전략 Bean으로 분리하고, reflection 기본 구현과 no-op/수동 등록 구현을 선택하게 한다. |
+| `CerbosSqlPredicateInjector` 고급 구현 | 기본 구현은 단일 `SELECT`의 top-level `WHERE`/`ORDER BY` 중심이다. | derived-table wrapping injector, CTE-target injector, union-branch injector 샘플 구현과 테스트를 추가한다. |
+| resource resolver 테스트 확대 | 현재 resolver는 기본 convention 구현이지만 전용 테스트가 부족하다. | `@CerbosResource` 인자, id parameter, mapper/finder, `withId(...)`, custom resolver 우선순위 테스트를 추가한다. |
+| SQL injection result 검증 강화 | predicate 삽입 위치와 parameter index가 SQL shape에 민감하다. | `WHERE`, `ORDER BY`, nested subquery, string literal `?`, CTE, union fixture를 별도 테스트로 축적한다. |
 
-```yaml
-cerboshelper:
-  target: ${CERBOS_TARGET:cerbos:3593}
-```
+### 우선순위 중간
 
-검증 순서는 다음을 권장한다.
+| 보완 항목 | 현재 상태 | 개선 방향 |
+|-----------|-----------|-----------|
+| null attr 정책 명시화 | SDK attribute builder는 null 값을 보내지 않는다. | `CerbosPayloadMapper`에서 null 포함/제외 전략을 Bean 또는 property로 분리한다. |
+| parameter naming policy | named mode는 `cp0`, `cp1`을 사용한다. | `CerbosSqlParameterNameStrategy`로 prefix를 바꿀 수 있게 한다. 기본값은 `cp`로 유지한다. |
+| SQL dialect 명시 | 기본 injector는 ANSI/PostgreSQL에 가까운 SQL 문자열 처리를 한다. | `CerbosSqlDialect` 또는 injector 구현 이름으로 지원 SQL 범위를 명확히 나눈다. |
+| observability hook | scope 적용 로그는 debug/info 수준에 제한된다. | plan, predicate, decision을 마스킹해서 관찰하는 listener hook을 추가한다. |
+| batch check 최적화 | `CerbosCheckAspect`는 resolved resource마다 `isAllowed`를 호출한다. | 같은 action/principal의 다중 resource는 `checkResources` batch 호출로 묶는 옵션을 추가한다. |
 
-1. 애플리케이션 기동 로그에서 interceptor order를 확인한다.
-2. `@CerbosScoped`가 붙은 목록 API를 호출한다.
-3. PageHelper total/list가 권한 필터 후 결과인지 확인한다.
-4. `@CerbosCheck`가 붙은 단건/수정/삭제 API를 호출한다.
-5. 가능하면 Cerbos decision log 또는 demo row trace에서 `PlanResources`와 `CheckResources` 결과가 같은 정책 의미를 갖는지 확인한다.
+### 우선순위 낮음
 
-## 14. 1.0.1에서 1.0.2로 올릴 때
-
-`1.0.2`는 복잡한 엔터프라이즈 principal과 프로젝트별 예외 계약을 더 쉽게 붙이기 위한 패치 릴리스다.
-
-추가된 것:
-
-- `CerbosPrincipalEnvelope`
-- `CerbosAccessDeniedHandler`
-- `CerbosDeniedDecision`
-
-기존 코드에서 그대로 유지되는 것:
-
-- `@CerbosScoped`
-- `@CerbosCheck`
-- `CerbosPrincipalResolver`
-- `@CerbosResource`
-- `@CerbosAttribute`
-- `cerboshelper.target`
-
-일반 프로젝트는 반드시 수정할 필요가 없다. 기존 방식처럼 현재 사용자 객체를 resolver에서 반환해도 된다.
-
-복잡한 principal을 가진 프로젝트는 resolver 반환값만 다음처럼 바꿀 수 있다.
-
-```java
-return Optional.of(new CerbosPrincipalEnvelope(id, roles, attr, policyVersion));
-```
-
-프로젝트 표준 예외를 써야 하면 다음 Bean만 추가한다.
-
-```java
-@Bean
-CerbosAccessDeniedHandler cerbosAccessDeniedHandler() {
-    return decision -> new AccessDeniedException(decision.message());
-}
-```
+| 보완 항목 | 현재 상태 | 개선 방향 |
+|-----------|-----------|-----------|
+| Kotlin/record 외 immutable copy 지원 | 기본 resolver는 optional `withId(...)` convention을 사용한다. | `CerbosResourceIdentityApplier` 전략으로 id 적용 방식을 분리한다. |
+| Spring Security starter 성격의 보조 모듈 | core는 Spring Security principal 타입을 모른다. | 별도 adapter 모듈에서 `Authentication` 기반 resolver 예제를 제공한다. |
+| 문서 예제 분리 | README가 설치, API, 고급 SQL, 릴리스를 모두 담는다. | `docs/advanced-sql.md`, `docs/extension-points.md`, `docs/release.md`로 분리할 수 있다. |
 
 ## 15. Annotation/API Reference
 
@@ -920,10 +948,10 @@ public List<Document> exportDocuments() {
 | `action` | 예 | 없음 | Cerbos action. 예: `view`, `create`, `update`, `delete` |
 | `principal` | 아니오 | `""` | SpEL principal override |
 | `resource` | 아니오 | `""` | SpEL resource override |
-| `resourceKind` | 아니오 | `""` | convention 추론 실패 시 resource kind 지정 |
+| `resourceKind` | 아니오 | `""` | 기본 `CerbosResourceResolver`가 id lookup을 할 때 사용할 resource kind |
 | `id` | 아니오 | `""` | resource id 파라미터명. 예: `documentId` |
-| `mapper` | 아니오 | `""` | finder를 호출할 Mapper Bean 이름 |
-| `finder` | 아니오 | `"findById"` | 기존 row 조회 메서드명 |
+| `mapper` | 아니오 | `""` | 기본 `CerbosResourceResolver`에서 finder를 호출할 Mapper Bean 이름 |
+| `finder` | 아니오 | `"findById"` | 기본 `CerbosResourceResolver`의 기존 row 조회 메서드명 |
 
 권장 사용은 action만 쓰는 것이다.
 
@@ -934,7 +962,7 @@ public Document updateDocument(long documentId, Document document) {
 }
 ```
 
-convention이 맞지 않을 때만 필요한 값만 덮어쓴다.
+기본 resolver convention이 맞지 않을 때만 필요한 값만 덮어쓴다. convention 자체를 쓰지 않는 프로젝트는 `CerbosResourceResolver` Bean을 등록한다.
 
 ```java
 @CerbosCheck(action = "view", resourceKind = "document", id = "documentId", mapper = "documentQueryMapper", finder = "selectById")
@@ -1015,6 +1043,35 @@ public interface CerbosAuthorizationClient {
 
 일반 프로젝트에서는 직접 구현하지 않는다.
 
+### `CerbosResourceResolver`
+
+`@CerbosCheck`가 검사할 resource 목록을 반환하는 전략이다. 기본 구현은 CRUD convention을 제공하지만, 라이브러리 core는 특정 Mapper 이름이나 id 조회 방식에 고정되지 않는다.
+
+```java
+public interface CerbosResourceResolver {
+    List<Object> resolve(CerbosResourceResolutionRequest request);
+}
+```
+
+custom resolver는 다음 경우에 사용한다.
+
+- repository/service 계층으로 resource snapshot을 읽어야 하는 경우
+- mapper 이름이 resource kind와 전혀 맞지 않는 경우
+- immutable copy 방식이 `withId(...)`가 아닌 경우
+- update에서 before/after resource 구성이 프로젝트별로 다른 경우
+
+### `CerbosSqlPredicateInjector`
+
+원본 MyBatis SQL에 Cerbos predicate를 삽입하는 전략이다. 기본 구현은 단일 `SELECT`를 대상으로 하지만, custom Bean으로 SQL shape별 처리를 분리할 수 있다.
+
+```java
+public interface CerbosSqlPredicateInjector {
+    CerbosSqlInjectionResult inject(String sql, String predicate);
+}
+```
+
+`CerbosSqlInjectionResult.parameterInsertionIndex`는 새 positional parameter를 기존 MyBatis parameter mapping의 어느 위치에 넣을지 나타낸다. SQL을 wrapping하거나 predicate 위치를 옮기는 구현에서는 이 index를 반드시 함께 계산해야 한다.
+
 ### `CerbosResourceColumnRegistry`
 
 기본 annotation 기반 column 매핑으로 처리할 수 없는 경우에만 사용한다.
@@ -1034,9 +1091,9 @@ CerbosResourceColumnRegistry cerbosResourceColumnRegistry() {
 | 증상 | 확인할 것 | 해결 |
 |------|-----------|------|
 | `principal`을 찾을 수 없음 | `CerbosPrincipalResolver` Bean 등록 여부 | 인증 context에서 현재 사용자 snapshot을 반환하는 Bean 추가 |
-| `documentId` convention이 동작하지 않음 | `-parameters` 적용 여부 | Gradle `JavaCompile`에 `options.compilerArgs.add('-parameters')` 추가 |
-| Mapper Bean을 찾지 못함 | 기본 Bean 이름이 `documentMapper`인지 | `@CerbosCheck(mapper = "...")`로 실제 Bean 이름 지정 |
-| `findById`를 찾지 못함 | Mapper 조회 메서드명 | `@CerbosCheck(finder = "selectById")` 지정 |
+| id convention이 동작하지 않음 | `-parameters` 적용 여부 또는 custom resolver 필요 여부 | `-parameters`를 켜거나 `CerbosResourceResolver` Bean 등록 |
+| Mapper Bean을 찾지 못함 | 기본 resolver convention 사용 여부 | `@CerbosCheck(mapper = "...")` 지정 또는 `CerbosResourceResolver` Bean 등록 |
+| `findById`를 찾지 못함 | 기본 resolver convention 사용 여부 | `@CerbosCheck(finder = "selectById")` 지정 또는 `CerbosResourceResolver` Bean 등록 |
 | `resourceKind` 추론 실패 | 반환 타입에 `@CerbosResource`가 있는지 | `@CerbosScoped(resourceKind = "...")` 명시 |
 | SQL column 매핑 실패 | policy attr 이름과 Java 필드명 불일치 | `@CerbosAttribute(value = "...", column = "...")`로 맞춤 |
 | 전체 조회로 fallback될까 걱정됨 | 변환 실패 시 동작 | CerbosHelper는 변환 실패 시 예외를 던지고 전체 조회로 열지 않음 |
@@ -1051,7 +1108,7 @@ CerbosResourceColumnRegistry cerbosResourceColumnRegistry() {
 1. 애플리케이션이 PDP gRPC target에 연결되는지 확인한다.
 2. `CerbosPrincipalResolver`가 현재 principal을 반환하는지 확인한다.
 3. 목록 조회면 `@CerbosScoped`와 resource kind 추론을 확인한다.
-4. 단건/쓰기면 `@CerbosCheck`의 id/mapper/finder convention을 확인한다.
+4. 단건/쓰기면 `@CerbosCheck`의 id/mapper/finder convention 또는 custom `CerbosResourceResolver`를 확인한다.
 5. 정책의 `request.resource.attr.*` 이름과 Java field/`@CerbosAttribute` 이름을 비교한다.
 6. PageHelper 사용 시 interceptor order 로그를 확인한다.
 
@@ -1081,7 +1138,7 @@ cerboshelper.mybatis.interceptor-order [PageInterceptor, CerbosMyBatisScopeInter
 
 ## 18. 복잡한 SQL 처리 가이드
 
-CerbosHelper는 일반적인 단일 resource 목록 조회를 가장 안정적으로 지원한다.
+CerbosHelper의 기본 `DefaultCerbosSqlPredicateInjector`는 일반적인 단일 resource 목록 조회를 가장 안정적으로 지원한다.
 
 권장 SQL은 다음 형태다.
 
@@ -1092,7 +1149,7 @@ WHERE document.deleted = false
 ORDER BY document.id
 ```
 
-복잡한 조회가 필요하면 권한 필터가 적용되는 resource row 조회를 먼저 분리하고, aggregate나 join projection은 그 이후 단계로 나누는 방식을 권장한다.
+복잡한 조회가 필요하면 권한 필터가 적용되는 resource row 조회를 먼저 분리하고, aggregate나 join projection은 그 이후 단계로 나누는 방식이 가장 단순하다.
 
 권장 분리 예시는 다음과 같다.
 
@@ -1103,32 +1160,94 @@ List<Document> findVisibleDocuments(DocumentSearchCondition condition);
 List<DocumentSummary> summarizeDocuments(List<Long> visibleDocumentIds);
 ```
 
-다음 패턴은 바로 붙이기 전에 별도 검증이 필요하다.
+### WITH CTE
+
+`WITH`는 resource row가 유지되는 CTE라면 구현 가능하다. 핵심은 Cerbos predicate가 참조하는 모든 resource attr column이 필터 적용 지점에 존재해야 한다는 점이다.
+
+권장 형태는 CTE 내부의 원본 resource 조회에 `@CerbosScoped`를 붙이는 것이다.
+
+```sql
+WITH visible_document AS (
+    SELECT
+        document.id,
+        document.company_id,
+        document.owner_user_id,
+        document.status
+    FROM documents document
+    WHERE document.deleted = false
+)
+SELECT *
+FROM visible_document
+ORDER BY id
+```
+
+이 형태를 outer wrapping으로 처리하려면 custom `CerbosSqlPredicateInjector`가 outer alias를 기준으로 predicate를 만들 수 있어야 한다. 그 경우 `@CerbosResource(sqlAlias = "scoped")` 또는 별도 `CerbosResourceColumnRegistry`로 `request.resource.attr.companyId -> scoped.company_id`처럼 매핑한다.
+
+### UNION
+
+`UNION`은 두 종류로 나뉜다.
+
+같은 resource kind의 동일 schema를 합치는 `UNION`은 각 branch에 같은 Cerbos predicate를 넣는 custom injector로 구현할 수 있다.
+
+```sql
+SELECT id, company_id, owner_user_id, status FROM draft_documents draft_document
+UNION ALL
+SELECT id, company_id, owner_user_id, status FROM published_documents published_document
+```
+
+이 경우에는 branch마다 alias가 다르므로 `CerbosSqlPredicateInjector`만으로는 부족할 수 있다. 더 안정적인 방식은 branch별 mapper를 분리해 각각 `@CerbosScoped`를 적용한 뒤 service에서 합치는 것이다.
+
+서로 다른 resource kind가 섞이는 `UNION`은 하나의 `resourceKind/action` plan으로 안전하게 표현하기 어렵다. 이 경우 branch별 resource kind로 별도 조회하고 애플리케이션에서 합치는 구조가 맞다.
+
+### GROUP BY와 aggregate
+
+`GROUP BY` 결과는 원본 resource row가 사라진다. 따라서 aggregate 결과에 직접 `@CerbosScoped`를 붙이면 `request.resource.attr.*`가 의미하는 row가 불명확해질 수 있다.
+
+구현 가능한 패턴은 먼저 visible resource id 또는 visible resource row를 구하고, 그 결과를 기준으로 aggregate를 수행하는 것이다.
+
+```java
+@CerbosScoped(resourceKind = "document", action = "view")
+List<Long> findVisibleDocumentIds(DocumentSearchCondition condition);
+
+List<DocumentSummary> summarizeByVisibleDocumentIds(List<Long> visibleDocumentIds);
+```
+
+SQL로 한 번에 처리해야 한다면 custom injector가 aggregate 이전 단계의 CTE에 predicate를 삽입해야 한다. outer aggregate 결과에 predicate를 붙이는 방식은 권한 의미가 깨질 가능성이 높다.
+
+### 별도 검증이 필요한 패턴
+
+다음 패턴은 기본 injector에 바로 붙이지 않는다.
 
 - `WITH` CTE 안에서 resource row가 여러 단계로 변형되는 SQL
 - `UNION`으로 여러 resource kind가 섞이는 SQL
 - `GROUP BY`로 row 단위 resource가 사라진 결과
 - subquery alias와 outer query alias가 같은 attr 이름을 다르게 의미하는 SQL
 
-이런 경우에는 `@CerbosScoped`를 가장 원본 resource row를 반환하는 Mapper에 붙이고, 이후 가공은 별도 Mapper나 service 단계에서 처리하는 것이 안전하다.
+이런 경우에는 `@CerbosScoped`를 가장 원본 resource row를 반환하는 Mapper에 붙이고, 이후 가공은 별도 Mapper나 service 단계에서 처리하는 것이 안전하다. 한 SQL 안에서 반드시 처리해야 하면 `CerbosSqlPredicateInjector`와 `CerbosResourceColumnRegistry`를 함께 custom Bean으로 제공한다.
 
-## 19. 1.0.2에서 1.0.3으로 올릴 때
+## 19. 추상화 확장 포인트 요약
 
-`1.0.3`은 코드 기능 변경이 아니라 사용성 문서 보강 릴리스다.
+CerbosHelper는 기본 CRUD convention을 제공하지만, core runtime은 다음 extension point로 분리되어 있다.
 
-변경된 문서 내용:
+| 확장 포인트 | 기본 구현 | 교체 목적 |
+|-------------|-----------|-----------|
+| `CerbosAuthorizationClient` | `CerbosSdkAuthorizationClient` | Cerbos SDK channel, mTLS, gateway, 테스트 fake client |
+| `CerbosPrincipalResolver` | empty resolver | 애플리케이션 인증 context 연결 |
+| `CerbosPayloadMapper` | annotation/reflection 기반 mapper | principal/resource payload 정책 변경 |
+| `CerbosResourceResolver` | `DefaultCerbosResourceResolver` | `@CerbosCheck` resource lookup, before/after resource 구성 변경 |
+| `CerbosResourceColumnRegistry` | `CerbosResourceColumns` | SQL column allowlist 직접 구성 |
+| `CerbosSqlPredicateInjector` | `DefaultCerbosSqlPredicateInjector` | `WITH`, `UNION`, aggregate 등 SQL shape별 predicate 삽입 |
+| `CerbosMyBatisInterceptorOrderStrategy` | `DefaultCerbosMyBatisInterceptorOrderStrategy` | MyBatis plugin order 수동 관리 또는 reflection 회피 |
+| `CerbosAccessDeniedHandler` | `SecurityException` handler | 프로젝트 표준 deny 예외 변환 |
 
-- 5분 Quick Start
-- 최소 Cerbos policy YAML 예제
-- annotation/API reference
-- troubleshooting 표
-- PageHelper 검증 체크리스트
-- 복잡한 SQL 처리 가이드
+하드코딩을 줄이는 방향은 새 annotation option을 계속 늘리는 것보다 위 전략 Bean을 프로젝트별로 교체하는 것이다. 기본 구현은 작은 CRUD 프로젝트를 빠르게 붙이기 위한 convention이고, 복잡한 프로젝트는 resolver/injector/registry를 명시 구현하는 쪽이 더 안전하다.
 
-라이브러리 API는 `1.0.2`와 동일하게 유지된다. 기존 애플리케이션 코드는 dependency version만 올리면 된다.
+보완 로드맵은 `docs/ROADMAP_KO.md`에 유지한다.
+
+새 extension point를 외부 프로젝트에서 사용하려면 해당 변경이 포함된 태그를 의존성 버전으로 지정한다.
 
 ```groovy
-implementation 'com.github.qsdcv301:CerbosHelper:v1.0.3'
+implementation 'com.github.qsdcv301:CerbosHelper:<tag>'
 ```
 
 ## 20. 릴리스
@@ -1136,8 +1255,8 @@ implementation 'com.github.qsdcv301:CerbosHelper:v1.0.3'
 GitHub/JitPack 릴리스는 태그 기준이다.
 
 ```bash
-git tag v1.0.3
-git push origin v1.0.3
+git tag <tag>
+git push origin <tag>
 ```
 
 새 기능을 의존성으로 쓰려면 사용하는 프로젝트의 버전을 새 태그로 올린다.

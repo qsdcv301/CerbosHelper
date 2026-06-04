@@ -1,5 +1,6 @@
 package io.cerboshelper.mybatis;
 
+import io.cerboshelper.mybatis.auth.CerbosHelperProperties;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
