@@ -25,7 +25,12 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
         CerbosCheckSpec check = request.check();
         CerbosMethodExpressionEvaluator.Context context = request.context();
         List<Object> resources = new ArrayList<>();
-        inferExistingResource(check, context).ifPresent(resources::add);
+        Optional<Object> existingResource = inferExistingResource(check, context);
+        if (existingResource.isPresent() && usesExistingResource(check.action())) {
+            resources.add(existingResource.get());
+            return resources;
+        }
+        existingResource.ifPresent(resources::add);
         if (!check.resource().isBlank()) {
             Object resource = tokenOrExpression(check.resource(), context);
             addResource(resources, applyIdIfPossible(resource, check, context));
@@ -41,6 +46,10 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
             addResource(resources, applyIdIfPossible(resource, check, context));
         }
         return resources;
+    }
+
+    private boolean usesExistingResource(String action) {
+        return "view".equals(action) || "update".equals(action) || "delete".equals(action);
     }
 
     private void addResource(List<Object> resources, Object resource) {
@@ -68,15 +77,18 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
     private Optional<IdReference> idReference(CerbosCheckSpec check, CerbosMethodExpressionEvaluator.Context context) {
         if (!check.resourceKind().isBlank() && !check.id().isBlank()) {
             String resourceKind = check.resourceKind();
+            Object id = tokenOrExpression(check.id(), context);
+            requireResolvedId(id, check.id(), resourceKind);
             return Optional.of(new IdReference(
                     resourceKind,
                     mapperBeanName(check, resourceKind),
                     finderName(check),
-                    tokenOrExpression(check.id(), context)
+                    id
             ));
         }
         if (!check.id().isBlank()) {
             Object id = tokenOrExpression(check.id(), context);
+            requireResolvedId(id, check.id(), "");
             return inferResourceKindForId(context)
                     .map(resourceKind -> new IdReference(resourceKind, mapperBeanName(check, resourceKind), finderName(check), id));
         }
@@ -89,6 +101,14 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
                 })
                 .filter(reference -> beanFactory.containsBean(reference.mapperBeanName()))
                 .findFirst();
+    }
+
+    private void requireResolvedId(Object id, String idExpression, String resourceKind) {
+        if (id == null) {
+            throw new IllegalArgumentException("Cannot resolve Cerbos resource id from '" + idExpression + "'"
+                    + (resourceKind == null || resourceKind.isBlank() ? "" : " for resourceKind=" + resourceKind)
+                    + ". Ensure the protected DTO exposes id/getId for update/delete/view checks.");
+        }
     }
 
     private String mapperBeanName(CerbosCheckSpec check, String resourceKind) {

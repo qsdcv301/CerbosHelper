@@ -1,5 +1,6 @@
 package io.cerboshelper.mybatis.check;
 
+import io.cerboshelper.mybatis.auth.CerbosHelperProperties;
 import io.cerboshelper.mybatis.convention.CerbosCheckConventionResolver;
 import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -8,6 +9,8 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 
 import java.lang.reflect.Method;
+import java.util.List;
+import java.util.regex.Pattern;
 
 @Aspect
 public class CerbosAutoCheckAspect {
@@ -20,15 +23,25 @@ public class CerbosAutoCheckAspect {
 
     private final CerbosCheckConventionResolver conventionResolver;
     private final CerbosCheckAspect checkAspect;
+    private final CerbosHelperProperties properties;
 
     public CerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosCheckAspect checkAspect) {
+        this(conventionResolver, checkAspect, new CerbosHelperProperties());
+    }
+
+    public CerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosCheckAspect checkAspect, CerbosHelperProperties properties) {
         this.conventionResolver = conventionResolver;
         this.checkAspect = checkAspect;
+        this.properties = properties == null ? new CerbosHelperProperties() : properties;
     }
 
     @Around(AUTO_CHECK_POINTCUT)
     public Object check(ProceedingJoinPoint joinPoint) throws Throwable {
         Method method = ((MethodSignature) joinPoint.getSignature()).getMethod();
+        Class<?> targetType = joinPoint.getTarget() != null ? joinPoint.getTarget().getClass() : method.getDeclaringClass();
+        if (!shouldAutoCheck(targetType, method)) {
+            return proceed(joinPoint);
+        }
         CerbosMethodExpressionEvaluator.Context context = checkAspect.context(method, joinPoint.getArgs());
         CerbosCheckSpec check = conventionResolver.resolve(method, context).orElse(null);
         if (check != null) {
@@ -45,5 +58,46 @@ public class CerbosAutoCheckAspect {
         } catch (Throwable throwable) {
             throw new IllegalStateException("Cerbos auto check method failed", throwable);
         }
+    }
+
+    boolean shouldAutoCheck(Class<?> targetType, Method method) {
+        CerbosHelperProperties.Auto auto = properties.getCheck().getAuto();
+        if (!auto.isEnabled()) {
+            return false;
+        }
+        List<String> classNames = List.of(
+                targetType.getName(),
+                targetType.getSimpleName(),
+                method.getDeclaringClass().getName(),
+                method.getDeclaringClass().getSimpleName()
+        );
+        if (!auto.getIncludeClassNamePatterns().isEmpty()
+                && !matchesAny(auto.getIncludeClassNamePatterns(), classNames)) {
+            return false;
+        }
+        if (matchesAny(auto.getExcludeClassNamePatterns(), classNames)) {
+            return false;
+        }
+        List<String> methodNames = List.of(method.getName());
+        if (!auto.getIncludeMethodNamePatterns().isEmpty()
+                && !matchesAny(auto.getIncludeMethodNamePatterns(), methodNames)) {
+            return false;
+        }
+        return !matchesAny(auto.getExcludeMethodNamePatterns(), methodNames);
+    }
+
+    private boolean matchesAny(List<String> patterns, List<String> values) {
+        for (String pattern : patterns) {
+            if (pattern == null || pattern.isBlank()) {
+                continue;
+            }
+            Pattern compiled = Pattern.compile(pattern);
+            for (String value : values) {
+                if (value != null && compiled.matcher(value).find()) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

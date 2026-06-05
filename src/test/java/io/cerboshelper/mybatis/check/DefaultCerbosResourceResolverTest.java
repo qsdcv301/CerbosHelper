@@ -11,11 +11,10 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertSame;
 
 class DefaultCerbosResourceResolverTest {
     @Test
-    void idAndDtoArgumentsResolveExistingResourceWithStrippedDtoResourceKind() throws Exception {
+    void idAndDtoArgumentsResolveOnlyExistingResourceForUpdate() throws Exception {
         DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
         beanFactory.registerSingleton("documentMapper", new DocumentMapper());
         CerbosMethodExpressionEvaluator expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
@@ -27,15 +26,57 @@ class DefaultCerbosResourceResolverTest {
 
         List<Object> resources = resolver.resolve(new CerbosResourceResolutionRequest(check, method, new Object[]{7L, update}, context));
 
-        assertEquals(2, resources.size());
+        assertEquals(1, resources.size());
         assertInstanceOf(DocumentDto.class, resources.get(0));
         assertEquals(7, ((DocumentDto) resources.get(0)).id());
-        assertSame(update, resources.get(1));
+    }
+
+    @Test
+    void dtoIdExpressionResolvesExistingResourceForUpdate() throws Exception {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        beanFactory.registerSingleton("documentMapper", new DocumentMapper());
+        CerbosMethodExpressionEvaluator expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
+        DefaultCerbosResourceResolver resolver = new DefaultCerbosResourceResolver(beanFactory, expressionEvaluator);
+        Method method = DocumentService.class.getDeclaredMethod("updateDocument", DocumentDto.class);
+        DocumentDto update = new DocumentDto(9);
+        CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, new Object[]{update});
+        CerbosCheckSpec check = new CerbosCheckSpec("update", "", "document", "", "#document.id", "", "findById");
+
+        List<Object> resources = resolver.resolve(new CerbosResourceResolutionRequest(check, method, new Object[]{update}, context));
+
+        assertEquals(1, resources.size());
+        assertInstanceOf(DocumentDto.class, resources.get(0));
+        assertEquals(9, ((DocumentDto) resources.get(0)).id());
+    }
+
+    @Test
+    void createUsesRequestResource() throws Exception {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        CerbosMethodExpressionEvaluator expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
+        DefaultCerbosResourceResolver resolver = new DefaultCerbosResourceResolver(beanFactory, expressionEvaluator);
+        Method method = DocumentService.class.getDeclaredMethod("createDocument", DocumentDto.class);
+        DocumentDto create = new DocumentDto(0);
+        CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, new Object[]{create});
+        CerbosCheckSpec check = new CerbosCheckSpec("create", "", "document", "", "", "", "findById");
+
+        List<Object> resources = resolver.resolve(new CerbosResourceResolutionRequest(check, method, new Object[]{create}, context));
+
+        assertEquals(1, resources.size());
+        assertInstanceOf(DocumentDto.class, resources.get(0));
+        assertEquals(0, ((DocumentDto) resources.get(0)).id());
     }
 
     static class DocumentService {
         @SuppressWarnings("unused")
         void updateDocument(long documentId, DocumentDto document) {
+        }
+
+        @SuppressWarnings("unused")
+        void updateDocument(DocumentDto document) {
+        }
+
+        @SuppressWarnings("unused")
+        void createDocument(DocumentDto document) {
         }
     }
 

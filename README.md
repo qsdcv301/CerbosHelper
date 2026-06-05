@@ -62,15 +62,16 @@ ORDER BY d.id
 - `create*`, `insert*`, `save*` -> `create`
 - `update*`, `modify*` -> `update`
 - `delete*`, `remove*` -> `delete`
-- `CerbosCommonDto` 인자가 있으면 그 객체를 검사한다.
-- `{resource}Id` 인자가 있으면 `{resource}Mapper.findById(...)`로 기존 row를 조회해 검사한다.
+- `create*`는 `CerbosCommonDto` 인자에 `ownerBy`가 없으면 현재 principal id를 기본값으로 채운다. `ownerOrgBy`가 없고 DTO가 `getOrgId()` 또는 `getOrganizationId()`를 제공하면 그 값을 기본값으로 채운다.
+- `update*`, `delete*`, `get*`는 `CerbosCommonDto.getId()` / `id()` 또는 `{resource}Id` 인자를 사용해 `{resource}Mapper.findById(...)`로 기존 row를 조회한 뒤 그 row를 검사한다.
+- 따라서 Cerbos로 보내는 resource payload에는 `ownerBy` / `ownerOrgBy`가 포함되어야 한다. HTTP 요청 DTO가 아니라 Helper가 검사에 사용하는 resource DTO 기준이다.
 - `findAll*`, `debug*`, `trace*`, `admin*`은 자동 check에서 제외한다.
 
 ## 3. 설치
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.8'
+    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.9'
 }
 ```
 
@@ -79,6 +80,13 @@ cerboshelper:
   target: ${CERBOS_TARGET:cerbos:3593}
   plaintext: true
   timeout: 1s
+  check:
+    auto:
+      include-class-name-patterns:
+        - ".*CommandService.*"
+        - ".*CerbosGuardService.*"
+      exclude-class-name-patterns:
+        - ".*UtilService.*"
 ```
 
 파라미터 이름 기반 convention을 쓰므로 Java 컴파일에 `-parameters`를 켠다.

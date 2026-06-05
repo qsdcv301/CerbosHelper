@@ -3,12 +3,14 @@ package io.cerboshelper.mybatis.check;
 import com.example.cerboshelpertest.ApplicationService;
 import com.example.cerboshelpertest.BeanFactoryMethod;
 import com.example.cerboshelpertest.DemoConfiguration;
+import io.cerboshelper.mybatis.auth.CerbosHelperProperties;
 import org.aspectj.lang.annotation.Around;
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.aspectj.AspectJExpressionPointcut;
 import org.springframework.context.ApplicationContext;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,6 +44,36 @@ class CerbosAutoCheckAspectTest {
         Method method = ApplicationContext.class.getDeclaredMethod("getId");
 
         assertFalse(pointcut.matches(method, ApplicationContext.class));
+    }
+
+    @Test
+    void autoCheckFilterIncludesConfiguredClassPattern() throws NoSuchMethodException {
+        CerbosHelperProperties properties = new CerbosHelperProperties();
+        properties.getCheck().getAuto().setIncludeClassNamePatterns(List.of("ApplicationService"));
+        CerbosAutoCheckAspect aspect = new CerbosAutoCheckAspect(null, null, properties);
+        Method method = ApplicationService.class.getDeclaredMethod("save");
+
+        assertTrue(aspect.shouldAutoCheck(ApplicationService.class, method));
+    }
+
+    @Test
+    void autoCheckFilterExcludesConfiguredClassPattern() throws NoSuchMethodException {
+        CerbosHelperProperties properties = new CerbosHelperProperties();
+        properties.getCheck().getAuto().setExcludeClassNamePatterns(List.of("ApplicationService"));
+        CerbosAutoCheckAspect aspect = new CerbosAutoCheckAspect(null, null, properties);
+        Method method = ApplicationService.class.getDeclaredMethod("save");
+
+        assertFalse(aspect.shouldAutoCheck(ApplicationService.class, method));
+    }
+
+    @Test
+    void autoCheckFilterCanDisableAutoCheck() throws NoSuchMethodException {
+        CerbosHelperProperties properties = new CerbosHelperProperties();
+        properties.getCheck().getAuto().setEnabled(false);
+        CerbosAutoCheckAspect aspect = new CerbosAutoCheckAspect(null, null, properties);
+        Method method = ApplicationService.class.getDeclaredMethod("save");
+
+        assertFalse(aspect.shouldAutoCheck(ApplicationService.class, method));
     }
 
     private static AspectJExpressionPointcut autoCheckPointcut() {

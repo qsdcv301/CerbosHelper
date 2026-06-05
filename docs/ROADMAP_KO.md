@@ -14,6 +14,8 @@
 | SQL predicate 삽입 | `CerbosSqlPredicateInjector`로 분리 |
 | MyBatis interceptor order | `CerbosMyBatisInterceptorOrderStrategy`로 분리 |
 | deny 예외 변환 | `CerbosAccessDeniedHandler`로 분리 |
+| auto-check 대상 제한 | `cerboshelper.check.auto.*` 설정으로 분리 |
+| write check resource 보강 | create owner 기본값, update/delete 기존 row 조회 지원 |
 
 ## 우선순위 높음
 

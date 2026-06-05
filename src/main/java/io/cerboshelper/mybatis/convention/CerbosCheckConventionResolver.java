@@ -23,7 +23,8 @@ public final class CerbosCheckConventionResolver {
         }
         Optional<ResourceArgument> resourceArgument = resourceArgument(method, context);
         if (resourceArgument.isPresent()) {
-            String idVariable = idVariableFor(resourceArgument.get().resourceKind(), context).orElse("");
+            String idVariable = idVariableFor(resourceArgument.get().resourceKind(), context)
+                    .orElseGet(() -> idExpressionForResourceArgument(action, resourceArgument.get().variableName()));
             return Optional.of(new CerbosCheckSpec(action, "", resourceArgument.get().variableName(), "", idVariable, "", "findById"));
         }
         Optional<IdReference> idReference = idReference(method, context);
@@ -80,6 +81,14 @@ public final class CerbosCheckConventionResolver {
                 .filter(name -> name.endsWith("Id"))
                 .filter(name -> context.variable(name) != null)
                 .findFirst();
+    }
+
+    private String idExpressionForResourceArgument(String action, String variableName) {
+        return usesExistingResource(action) ? "#" + variableName + ".id" : "";
+    }
+
+    private boolean usesExistingResource(String action) {
+        return "view".equals(action) || "update".equals(action) || "delete".equals(action);
     }
 
     private boolean isNamedParameter(String variableName, Method method) {

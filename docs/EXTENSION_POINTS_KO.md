@@ -10,6 +10,9 @@ CerbosHelper의 기본 방향은 사내 표준 규칙 자동 적용이다. 보�
 - `resourceKind`는 DTO 클래스명에서 `Dto` suffix를 제거한 뒤 lower camel로 만든다.
 - Mapper SQL alias는 top-level `FROM` / `JOIN`에서 자동 감지한다.
 - `findAll*`, `debug*`, `trace*`, `admin*`은 자동 보호 대상에서 제외한다.
+- auto-check 적용 대상은 `cerboshelper.check.auto.include-class-name-patterns` / `exclude-class-name-patterns`와 method pattern 설정으로 제한할 수 있다.
+- `create*` check는 `ownerBy`가 비어 있으면 principal id를 기본값으로 채우고, `ownerOrgBy`가 비어 있으면 DTO의 `orgId` / `organizationId` getter를 기본값 후보로 사용한다.
+- `update*`, `delete*`, `get*` check는 DTO 자체가 아니라 `getId()` / `id()` 또는 `{resource}Id`로 기존 row를 조회해 검사한다.
 
 ## 확장 Bean
 

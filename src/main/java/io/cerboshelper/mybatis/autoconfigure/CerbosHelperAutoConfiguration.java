@@ -102,8 +102,8 @@ public class CerbosHelperAutoConfiguration {
     @ConditionalOnClass(Aspect.class)
     @ConditionalOnBean(CerbosCheckAspect.class)
     @ConditionalOnMissingBean
-    CerbosAutoCheckAspect cerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosCheckAspect checkAspect) {
-        return new CerbosAutoCheckAspect(conventionResolver, checkAspect);
+    CerbosAutoCheckAspect cerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosCheckAspect checkAspect, CerbosHelperProperties properties) {
+        return new CerbosAutoCheckAspect(conventionResolver, checkAspect, properties);
     }
 
     @Bean
