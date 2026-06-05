@@ -70,7 +70,7 @@ ORDER BY d.id
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.7'
+    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.8'
 }
 ```
 

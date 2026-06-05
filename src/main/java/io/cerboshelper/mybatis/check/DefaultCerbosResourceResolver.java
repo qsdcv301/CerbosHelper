@@ -105,12 +105,12 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
     private Optional<String> inferResourceKindForId(CerbosMethodExpressionEvaluator.Context context) {
         Object resource = context.variable("resource");
         if (resource != null && CerbosCommonResourceRegistry.isCommonResourceType(resource.getClass())) {
-            return Optional.of(decapitalize(resource.getClass().getSimpleName()));
+            return Optional.of(defaultResourceKind(resource.getClass()));
         }
         return context.variableNames().stream()
                 .map(context::variable)
                 .filter(value -> value != null && CerbosCommonResourceRegistry.isCommonResourceType(value.getClass()))
-                .map(value -> decapitalize(value.getClass().getSimpleName()))
+                .map(value -> defaultResourceKind(value.getClass()))
                 .findFirst();
     }
 
@@ -175,6 +175,16 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
             return value;
         }
         return value.substring(0, 1).toLowerCase(Locale.ROOT) + value.substring(1);
+    }
+
+    private String defaultResourceKind(Class<?> resourceType) {
+        return decapitalize(stripDtoSuffix(resourceType.getSimpleName()));
+    }
+
+    private String stripDtoSuffix(String value) {
+        return value != null && value.endsWith("Dto") && value.length() > "Dto".length()
+                ? value.substring(0, value.length() - "Dto".length())
+                : value;
     }
 
     private record IdReference(String resourceKind, String mapperBeanName, String finderName, Object id) {
