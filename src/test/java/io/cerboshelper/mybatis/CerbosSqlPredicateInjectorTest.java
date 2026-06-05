@@ -30,4 +30,5 @@ class CerbosSqlPredicateInjectorTest {
         assertEquals("SELECT * FROM documents document WHERE (document.company_id = ?) ORDER BY document.id", result.sql());
         assertEquals(0, result.parameterInsertionIndex());
     }
+
 }

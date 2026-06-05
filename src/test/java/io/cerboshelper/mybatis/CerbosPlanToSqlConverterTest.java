@@ -2,7 +2,7 @@ package io.cerboshelper.mybatis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.cerboshelper.mybatis.annotation.CerbosResource;
+import io.cerboshelper.mybatis.model.CerbosCommonDto;
 import io.cerboshelper.mybatis.sql.CerbosPlanToSqlConverter;
 import io.cerboshelper.mybatis.sql.CerbosResourceColumns;
 import io.cerboshelper.mybatis.sql.CerbosSqlFilter;
@@ -17,7 +17,7 @@ class CerbosPlanToSqlConverterTest {
 
     private final CerbosPlanToSqlConverter converter = new CerbosPlanToSqlConverter(
             CerbosResourceColumns.builder()
-                    .resource(DocumentResource.class)
+                    .resource(Document.class)
                     .build()
     );
 
@@ -84,7 +84,7 @@ class CerbosPlanToSqlConverterTest {
                             "expression": {
                               "operator": "eq",
                               "operands": [
-                                {"variable": "request.resource.attr.ownerUserId"},
+                                {"variable": "request.resource.attr.ownerBy"},
                                 {"value": null}
                               ]
                             }
@@ -96,10 +96,33 @@ class CerbosPlanToSqlConverterTest {
                 }
                 """));
 
-        assertEquals("(document.region IN (?, ?)) OR (document.owner_user_id IS NULL)", filter.whereSql());
+        assertEquals("(document.region IN (?, ?)) OR (document.owner_by IS NULL)", filter.whereSql());
         assertEquals(2, filter.positionalParams().size());
         assertEquals("KR", filter.positionalParams().get(0));
         assertEquals("US", filter.positionalParams().get(1));
+    }
+
+    @Test
+    void createsPredicateWithDetectedSqlAlias() throws Exception {
+        CerbosSqlFilter filter = converter.convertPositional("document", plan("""
+                {
+                  "filter": {
+                    "kind": "KIND_CONDITIONAL",
+                    "condition": {
+                      "expression": {
+                        "operator": "eq",
+                        "operands": [
+                          {"variable": "request.resource.attr.ownerBy"},
+                          {"value": "user-1"}
+                        ]
+                      }
+                    }
+                  }
+                }
+                """), "d");
+
+        assertEquals("d.owner_by = ?", filter.whereSql());
+        assertEquals("user-1", filter.positionalParams().get(0));
     }
 
     @Test
@@ -137,12 +160,9 @@ class CerbosPlanToSqlConverterTest {
         return OBJECT_MAPPER.readTree(json);
     }
 
-    @CerbosResource(kind = "document")
-    private record DocumentResource(
-            String status,
-            int sensitivityLevel,
-            String region,
-            String ownerUserId
-    ) {
+    private static class Document extends CerbosCommonDto {
+        private String status;
+        private int sensitivityLevel;
+        private String region;
     }
 }

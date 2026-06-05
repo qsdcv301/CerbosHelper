@@ -1,7 +1,7 @@
 package io.cerboshelper.mybatis.check;
 
-import io.cerboshelper.mybatis.annotation.CerbosCheck;
-import io.cerboshelper.mybatis.annotation.CerbosResource;
+import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
+import io.cerboshelper.mybatis.model.CerbosCommonDto;
 import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.springframework.beans.factory.BeanFactory;
 
@@ -22,7 +22,7 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
 
     @Override
     public List<Object> resolve(CerbosResourceResolutionRequest request) {
-        CerbosCheck check = request.check();
+        CerbosCheckSpec check = request.check();
         CerbosMethodExpressionEvaluator.Context context = request.context();
         List<Object> resources = new ArrayList<>();
         inferExistingResource(check, context).ifPresent(resources::add);
@@ -32,7 +32,7 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
             return resources;
         }
         for (Object arg : request.args()) {
-            if (arg != null && arg.getClass().isAnnotationPresent(CerbosResource.class)) {
+            if (arg instanceof CerbosCommonDto) {
                 addResource(resources, applyIdIfPossible(arg, check, context));
             }
         }
@@ -50,7 +50,7 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
         resources.add(resource);
     }
 
-    private Optional<Object> inferExistingResource(CerbosCheck check, CerbosMethodExpressionEvaluator.Context context) {
+    private Optional<Object> inferExistingResource(CerbosCheckSpec check, CerbosMethodExpressionEvaluator.Context context) {
         IdReference idReference = idReference(check, context).orElse(null);
         if (idReference == null) {
             return Optional.empty();
@@ -59,13 +59,13 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
             throw new IllegalArgumentException("Cannot resolve Cerbos resource mapper bean '" + idReference.mapperBeanName()
                     + "' for resourceKind=" + idReference.resourceKind()
                     + ", id=" + idReference.id()
-                    + ". Register a custom CerbosResourceResolver bean or set @CerbosCheck(mapper = \"...\").");
+                    + ". Register a custom CerbosResourceResolver bean or provide a {resource}Mapper.findById(...) bean.");
         }
         Object mapper = beanFactory.getBean(idReference.mapperBeanName());
         return Optional.of(unwrap(invoke(mapper, idReference.finderName(), idReference.id()), idReference));
     }
 
-    private Optional<IdReference> idReference(CerbosCheck check, CerbosMethodExpressionEvaluator.Context context) {
+    private Optional<IdReference> idReference(CerbosCheckSpec check, CerbosMethodExpressionEvaluator.Context context) {
         if (!check.resourceKind().isBlank() && !check.id().isBlank()) {
             String resourceKind = check.resourceKind();
             return Optional.of(new IdReference(
@@ -91,26 +91,26 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
                 .findFirst();
     }
 
-    private String mapperBeanName(CerbosCheck check, String resourceKind) {
+    private String mapperBeanName(CerbosCheckSpec check, String resourceKind) {
         if (!check.mapper().isBlank()) {
             return check.mapper();
         }
         return resourceKind + "Mapper";
     }
 
-    private String finderName(CerbosCheck check) {
+    private String finderName(CerbosCheckSpec check) {
         return check.finder().isBlank() ? "findById" : check.finder();
     }
 
     private Optional<String> inferResourceKindForId(CerbosMethodExpressionEvaluator.Context context) {
         Object resource = context.variable("resource");
-        if (resource != null && resource.getClass().isAnnotationPresent(CerbosResource.class)) {
-            return Optional.of(resource.getClass().getAnnotation(CerbosResource.class).kind());
+        if (resource != null && CerbosCommonResourceRegistry.isCommonResourceType(resource.getClass())) {
+            return Optional.of(decapitalize(resource.getClass().getSimpleName()));
         }
         return context.variableNames().stream()
                 .map(context::variable)
-                .filter(value -> value != null && value.getClass().isAnnotationPresent(CerbosResource.class))
-                .map(value -> value.getClass().getAnnotation(CerbosResource.class).kind())
+                .filter(value -> value != null && CerbosCommonResourceRegistry.isCommonResourceType(value.getClass()))
+                .map(value -> decapitalize(value.getClass().getSimpleName()))
                 .findFirst();
     }
 
@@ -122,7 +122,7 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
         return variable != null ? variable : value;
     }
 
-    private Object applyIdIfPossible(Object resource, CerbosCheck check, CerbosMethodExpressionEvaluator.Context context) {
+    private Object applyIdIfPossible(Object resource, CerbosCheckSpec check, CerbosMethodExpressionEvaluator.Context context) {
         if (resource == null || check.id().isBlank()) {
             return resource;
         }
@@ -158,7 +158,7 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
             }
         }
         throw new IllegalArgumentException("Cannot find " + target.getClass().getName() + "." + methodName
-                + "(...). Register a custom CerbosResourceResolver bean or set @CerbosCheck(mapper = \"...\", finder = \"...\").");
+                + "(...). Register a custom CerbosResourceResolver bean or provide a {resource}Mapper.findById(...) method.");
     }
 
     private Object unwrap(Object value, IdReference idReference) {

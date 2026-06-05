@@ -3,6 +3,8 @@ package io.cerboshelper.mybatis;
 import io.cerboshelper.mybatis.auth.CerbosHelperProperties;
 import io.cerboshelper.mybatis.auth.CerbosPayloadMapper;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalEnvelope;
+import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
+import io.cerboshelper.mybatis.model.CerbosCommonDto;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -45,5 +47,52 @@ class CerbosPayloadMapperTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> payloadAttr = (Map<String, Object>) payload.get("attr");
         assertNull(payloadAttr.get("tenantId"));
+    }
+
+    @Test
+    void principalEnvelopeBuilderSupportsExtensibleAttributes() {
+        CerbosPrincipalEnvelope envelope = CerbosPrincipalEnvelope.builder("user-1")
+                .attr("userId", "user-1")
+                .attr("displayName", "User One")
+                .attr("organizationTreeIds", List.of(100L, 101L))
+                .attr("organizationTreeNames", List.of("Sales", "Sales Team 1"))
+                .build();
+
+        Map<String, Object> payload = payloadMapper.principalPayload(envelope);
+
+        assertEquals("user-1", payload.get("id"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> attr = (Map<String, Object>) payload.get("attr");
+        assertEquals("User One", attr.get("displayName"));
+        assertEquals(List.of(100L, 101L), attr.get("organizationTreeIds"));
+        assertEquals(List.of("Sales", "Sales Team 1"), attr.get("organizationTreeNames"));
+    }
+
+
+    @Test
+    void resourcePayloadSupportsCommonDtoWithoutResourceAnnotation() {
+        CerbosPayloadMapper mapper = new CerbosPayloadMapper(
+                new CerbosHelperProperties(),
+                new CerbosCommonResourceRegistry(List.of(Memo.class))
+        );
+
+        Map<String, Object> payload = mapper.resourcePayload(new Memo(10L, "user-1", 100L));
+
+        assertEquals("10", payload.get("id"));
+        assertEquals("memo", payload.get("kind"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> attr = (Map<String, Object>) payload.get("attr");
+        assertEquals("user-1", attr.get("ownerBy"));
+        assertEquals(100L, attr.get("ownerOrgBy"));
+    }
+
+    private static class Memo extends CerbosCommonDto {
+        private final long id;
+
+        private Memo(long id, String ownerBy, Long ownerOrgBy) {
+            this.id = id;
+            setOwnerBy(ownerBy);
+            setOwnerOrgBy(ownerOrgBy);
+        }
     }
 }

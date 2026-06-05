@@ -1,62 +1,85 @@
 package io.cerboshelper.mybatis;
 
-import io.cerboshelper.mybatis.annotation.CerbosAttribute;
-import io.cerboshelper.mybatis.annotation.CerbosResource;
+import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
+import io.cerboshelper.mybatis.model.CerbosCommonDto;
 import io.cerboshelper.mybatis.sql.CerbosResourceColumnRegistry;
 import io.cerboshelper.mybatis.sql.CerbosResourceColumns;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CerbosResourceColumnsTest {
     @Test
-    void mapsRecordAttributesToQualifiedSnakeCaseColumns() {
+    void mapsCommonDtoAttributesToQualifiedSnakeCaseColumns() {
         CerbosResourceColumnRegistry registry = CerbosResourceColumns.builder()
-                .resource(DocumentResource.class)
+                .resource(new CerbosCommonResourceRegistry(List.of(Document.class)).resources().get(0))
                 .build();
 
         assertEquals(
-                "document.owner_user_id",
-                registry.columnFor("document", "request.resource.attr.ownerUserId").orElseThrow()
+                "document.owner_by",
+                registry.columnFor("document", "request.resource.attr.ownerBy").orElseThrow()
+        );
+        assertEquals(
+                "document.owner_org_by",
+                registry.columnFor("document", "request.resource.attr.ownerOrgBy").orElseThrow()
         );
         assertEquals(
                 "document.sensitivity_level",
                 registry.columnFor("document", "request.resource.attr.sensitivityLevel").orElseThrow()
         );
-        assertTrue(registry.columnFor("document", "request.resource.attr.displayOnly").isEmpty());
     }
 
     @Test
-    void usesExplicitAliasAndColumnOverridesOnlyWhenProvided() {
+    void usesExplicitAliasWhenProvided() {
         CerbosResourceColumnRegistry registry = CerbosResourceColumns.builder()
                 .resource("document", AliasedDocumentResource.class, "d")
                 .build();
 
         assertEquals(
-                "d.owner_user_id",
-                registry.columnFor("document", "request.resource.attr.ownerUserId").orElseThrow()
+                "d.owner_by",
+                registry.columnFor("document", "request.resource.attr.ownerBy").orElseThrow()
         );
         assertEquals(
-                "documents.status_code",
+                "d.status",
                 registry.columnFor("document", "request.resource.attr.status").orElseThrow()
         );
     }
 
-    @CerbosResource(kind = "document")
-    private record DocumentResource(
-            long id,
-            String ownerUserId,
-            int sensitivityLevel,
-            @CerbosAttribute(ignore = true)
-            String displayOnly
-    ) {
+    private static class Document extends CerbosCommonDto {
+        private long id;
+        private int sensitivityLevel;
     }
 
-    private record AliasedDocumentResource(
-            String ownerUserId,
-            @CerbosAttribute(value = "status", column = "documents.status_code")
-            String state
-    ) {
+    private static class AliasedDocumentResource extends CerbosCommonDto {
+        private String status;
+    }
+
+    @Test
+    void mapsCommonDtoOwnerColumnsWithFixedDefaults() {
+        CerbosResourceColumnRegistry registry = CerbosResourceColumns.builder()
+                .resource("memo", Memo.class)
+                .build();
+
+        assertEquals("memo.owner_by", registry.columnFor("memo", "request.resource.attr.ownerBy").orElseThrow());
+        assertEquals("memo.owner_org_by", registry.columnFor("memo", "request.resource.attr.ownerOrgBy").orElseThrow());
+    }
+
+    private static class Memo extends CerbosCommonDto {
+        private long id;
+    }
+
+    @Test
+    void stripsDtoSuffixFromDefaultResourceKindAndAlias() {
+        CerbosResourceColumnRegistry registry = CerbosResourceColumns.builder()
+                .resource(new CerbosCommonResourceRegistry(List.of(DocumentDto.class)).resources().get(0))
+                .build();
+
+        assertEquals("document.owner_by", registry.columnFor("document", "request.resource.attr.ownerBy").orElseThrow());
+    }
+
+    private static class DocumentDto extends CerbosCommonDto {
+        private long id;
     }
 }

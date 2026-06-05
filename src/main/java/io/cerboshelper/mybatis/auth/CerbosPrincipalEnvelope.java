@@ -17,4 +17,45 @@ public record CerbosPrincipalEnvelope(String id, List<String> roles, Map<String,
     public static CerbosPrincipalEnvelope of(String id, List<String> roles, Map<String, Object> attr) {
         return new CerbosPrincipalEnvelope(id, roles, attr, "default");
     }
+
+    public static Builder builder(String id) {
+        return new Builder(id);
+    }
+
+    public static final class Builder {
+        private final String id;
+        private List<String> roles = List.of("authenticated");
+        private String policyVersion = "default";
+        private final Map<String, Object> attr = new LinkedHashMap<>();
+
+        private Builder(String id) {
+            this.id = id;
+        }
+
+        public Builder roles(List<String> roles) {
+            this.roles = roles;
+            return this;
+        }
+
+        public Builder policyVersion(String policyVersion) {
+            this.policyVersion = policyVersion;
+            return this;
+        }
+
+        public Builder attr(String name, Object value) {
+            attr.put(name, value);
+            return this;
+        }
+
+        public Builder attrs(Map<String, Object> values) {
+            if (values != null) {
+                attr.putAll(values);
+            }
+            return this;
+        }
+
+        public CerbosPrincipalEnvelope build() {
+            return new CerbosPrincipalEnvelope(id, roles, attr, policyVersion);
+        }
+    }
 }

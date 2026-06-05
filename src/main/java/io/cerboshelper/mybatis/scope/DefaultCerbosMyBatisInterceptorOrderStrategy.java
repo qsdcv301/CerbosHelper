@@ -15,10 +15,10 @@ public class DefaultCerbosMyBatisInterceptorOrderStrategy implements CerbosMyBat
 
     @Override
     public void apply(List<SqlSessionFactory> sqlSessionFactories) {
-        sqlSessionFactories.forEach(this::moveCerbosInterceptorLast);
+        sqlSessionFactories.forEach(this::moveCerbosInterceptorFirst);
     }
 
-    private void moveCerbosInterceptorLast(SqlSessionFactory sqlSessionFactory) {
+    private void moveCerbosInterceptorFirst(SqlSessionFactory sqlSessionFactory) {
         List<Interceptor> interceptors = mutableInterceptors(sqlSessionFactory);
         List<Interceptor> cerbosInterceptors = interceptors.stream()
                 .filter(CerbosMyBatisScopeInterceptor.class::isInstance)
@@ -28,7 +28,9 @@ public class DefaultCerbosMyBatisInterceptorOrderStrategy implements CerbosMyBat
         }
 
         interceptors.removeIf(CerbosMyBatisScopeInterceptor.class::isInstance);
-        interceptors.addAll(cerbosInterceptors);
+        // MyBatis wraps plugins in registration order, so the last interceptor runs first.
+        // Keep PageHelper outside Cerbos so it can build count/page SQL before scope injection.
+        interceptors.addAll(0, cerbosInterceptors);
         log.info("cerboshelper.mybatis.interceptor-order {}", interceptorNames(interceptors));
     }
 

@@ -1,14 +1,14 @@
 package io.cerboshelper.mybatis.scope;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.cerboshelper.mybatis.annotation.CerbosResource;
-import io.cerboshelper.mybatis.annotation.CerbosScoped;
 import io.cerboshelper.mybatis.auth.CerbosAuthorizationClient;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalResolver;
+import io.cerboshelper.mybatis.convention.CerbosScopeConventionResolver;
 import io.cerboshelper.mybatis.sql.CerbosPlanToSqlConverter;
 import io.cerboshelper.mybatis.sql.CerbosSqlInjectionResult;
 import io.cerboshelper.mybatis.sql.CerbosSqlFilter;
 import io.cerboshelper.mybatis.sql.CerbosSqlPredicateInjector;
+import io.cerboshelper.mybatis.sql.CerbosSqlResourceAliasResolver;
 import org.apache.ibatis.cache.CacheKey;
 import org.apache.ibatis.executor.Executor;
 import org.apache.ibatis.mapping.BoundSql;
@@ -39,17 +39,24 @@ import java.util.Properties;
 public class CerbosMyBatisScopeInterceptor implements Interceptor {
     private static final Logger log = LoggerFactory.getLogger(CerbosMyBatisScopeInterceptor.class);
     private static final String PARAM_PREFIX = "__cerbos_scope_param_";
+    private static final CerbosSqlResourceAliasResolver SQL_ALIAS_RESOLVER = new CerbosSqlResourceAliasResolver();
 
     private final CerbosAuthorizationClient authorizationClient;
     private final CerbosPlanToSqlConverter planToSqlConverter;
     private final CerbosSqlPredicateInjector sqlPredicateInjector;
     private final CerbosPrincipalResolver principalResolver;
+    private final CerbosScopeConventionResolver conventionResolver;
 
     public CerbosMyBatisScopeInterceptor(CerbosAuthorizationClient authorizationClient, CerbosPlanToSqlConverter planToSqlConverter, CerbosSqlPredicateInjector sqlPredicateInjector, CerbosPrincipalResolver principalResolver) {
+        this(authorizationClient, planToSqlConverter, sqlPredicateInjector, principalResolver, null);
+    }
+
+    public CerbosMyBatisScopeInterceptor(CerbosAuthorizationClient authorizationClient, CerbosPlanToSqlConverter planToSqlConverter, CerbosSqlPredicateInjector sqlPredicateInjector, CerbosPrincipalResolver principalResolver, CerbosScopeConventionResolver conventionResolver) {
         this.authorizationClient = authorizationClient;
         this.planToSqlConverter = planToSqlConverter;
         this.sqlPredicateInjector = sqlPredicateInjector;
         this.principalResolver = principalResolver;
+        this.conventionResolver = conventionResolver;
     }
 
     @Override
@@ -65,15 +72,12 @@ public class CerbosMyBatisScopeInterceptor implements Interceptor {
         if (scopedMethod == null) {
             return invocation.proceed();
         }
-        CerbosScoped scoped = scopedMethod.annotation();
         if (statement.getSqlCommandType() != SqlCommandType.SELECT) {
-            throw new IllegalStateException("@CerbosScoped can only be used on SELECT statements: " + statement.getId());
+            throw new IllegalStateException("Cerbos scoped rules can only be used on SELECT statements: " + statement.getId());
         }
 
-        CerbosScopeContext.Request request = CerbosScopeContext.current();
-
-        String action = resolveAction(scoped, request);
-        Object principal = resolvePrincipal(request, statement);
+        String action = resolveAction(scopedMethod);
+        Object principal = resolvePrincipal(statement);
         BoundSql boundSql = args.length == 4 ? statement.getBoundSql(parameter) : (BoundSql) args[5];
         String resourceKind = resolveResourceKind(scopedMethod);
         BoundSql scopedBoundSql = applyCerbosScope(statement, boundSql, resourceKind, action, principal);
@@ -98,7 +102,8 @@ public class CerbosMyBatisScopeInterceptor implements Interceptor {
 
     private BoundSql applyCerbosScope(MappedStatement statement, BoundSql boundSql, String resourceKind, String action, Object principal) {
         JsonNode plan = authorizationClient.planResources(principal, resourceKind, action);
-        CerbosSqlFilter filter = planToSqlConverter.convertPositional(resourceKind, plan);
+        String sqlAlias = SQL_ALIAS_RESOLVER.resolve(boundSql.getSql(), resourceKind).orElse("");
+        CerbosSqlFilter filter = planToSqlConverter.convertPositional(resourceKind, plan, sqlAlias);
         CerbosSqlInjectionResult injectionResult = sqlPredicateInjector.inject(boundSql.getSql(), filter.denied() ? "1 = 0" : filter.whereSql());
 
         List<ParameterMapping> originalMappings = boundSql.getParameterMappings();
@@ -126,32 +131,29 @@ public class CerbosMyBatisScopeInterceptor implements Interceptor {
         return scopedBoundSql;
     }
 
-    private String resolveAction(CerbosScoped scoped, CerbosScopeContext.Request request) {
-        if (request != null && request.action() != null && !request.action().isBlank()) {
-            return request.action();
+    private String resolveAction(ScopedMethod scopedMethod) {
+        if (scopedMethod.convention() != null && !scopedMethod.convention().action().isBlank()) {
+            return scopedMethod.convention().action();
         }
-        if (!scoped.action().isBlank()) {
-            return scoped.action();
+        if (scopedMethod.convention() == null) {
+            throw new IllegalStateException("No Cerbos action for scoped mapper statement");
         }
         throw new IllegalStateException("No Cerbos action for scoped mapper statement");
     }
 
-    private Object resolvePrincipal(CerbosScopeContext.Request request, MappedStatement statement) {
-        if (request != null && request.principal() != null) {
-            return request.principal();
-        }
+    private Object resolvePrincipal(MappedStatement statement) {
         return principalResolver.currentPrincipal()
                 .orElseThrow(() -> new IllegalStateException("No Cerbos principal for protected statement: " + statement.getId()
-                        + ". Register a CerbosPrincipalResolver bean or wrap the call with @CerbosScope(principal = \"...\")."));
+                        + ". Register a CerbosPrincipalResolver bean."));
     }
 
     private String resolveResourceKind(ScopedMethod scopedMethod) {
-        if (!scopedMethod.annotation().resourceKind().isBlank()) {
-            return scopedMethod.annotation().resourceKind();
+        if (scopedMethod.convention() != null && !scopedMethod.convention().resourceKind().isBlank()) {
+            return scopedMethod.convention().resourceKind();
         }
         return resourceKindFromReturnType(scopedMethod.method())
                 .orElseThrow(() -> new IllegalStateException("No Cerbos resourceKind for scoped mapper method: " + scopedMethod.method()
-                        + ". Set @CerbosScoped(resourceKind = \"...\") or annotate the mapper return type with @CerbosResource(kind = \"...\")."));
+                        + ". Return a CerbosCommonDto type or use a mapper method name that includes a CerbosCommonDto resource token."));
     }
 
     private java.util.Optional<String> resourceKindFromReturnType(Method method) {
@@ -168,8 +170,8 @@ public class CerbosMyBatisScopeInterceptor implements Interceptor {
     }
 
     private java.util.Optional<String> resourceKindFromType(Type type) {
-        if (type instanceof Class<?> returnClass && returnClass.isAnnotationPresent(CerbosResource.class)) {
-            return java.util.Optional.of(returnClass.getAnnotation(CerbosResource.class).kind());
+        if (type instanceof Class<?> returnClass) {
+            return conventionResolver == null ? java.util.Optional.empty() : conventionResolver.resourceKindForType(returnClass);
         }
         return java.util.Optional.empty();
     }
@@ -183,9 +185,16 @@ public class CerbosMyBatisScopeInterceptor implements Interceptor {
         String methodName = statement.getId().substring(separator + 1);
         try {
             Class<?> mapperType = Class.forName(className);
-            for (Method method : mapperType.getMethods()) {
-                if (method.getName().equals(methodName) && method.isAnnotationPresent(CerbosScoped.class)) {
-                    return new ScopedMethod(method, method.getAnnotation(CerbosScoped.class));
+            for (String candidateMethodName : candidateMethodNames(methodName)) {
+                for (Method method : mapperType.getMethods()) {
+                    if (method.getName().equals(candidateMethodName)) {
+                        CerbosScopeConventionResolver.CerbosScopeConvention convention = conventionResolver == null
+                                ? null
+                                : conventionResolver.resolve(method).orElse(null);
+                        if (convention != null) {
+                            return new ScopedMethod(method, convention);
+                        }
+                    }
                 }
             }
             return null;
@@ -194,6 +203,13 @@ public class CerbosMyBatisScopeInterceptor implements Interceptor {
         }
     }
 
-    private record ScopedMethod(Method method, CerbosScoped annotation) {
+    private List<String> candidateMethodNames(String methodName) {
+        if (methodName.endsWith("_COUNT")) {
+            return List.of(methodName.substring(0, methodName.length() - "_COUNT".length()), methodName);
+        }
+        return List.of(methodName);
+    }
+
+    private record ScopedMethod(Method method, CerbosScopeConventionResolver.CerbosScopeConvention convention) {
     }
 }

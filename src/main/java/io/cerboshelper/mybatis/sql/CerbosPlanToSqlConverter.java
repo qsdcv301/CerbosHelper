@@ -20,10 +20,18 @@ public class CerbosPlanToSqlConverter {
     }
 
     public CerbosSqlFilter convertPositional(String resourceKind, JsonNode plan) {
-        return convert(resourceKind, plan, PlaceholderMode.POSITIONAL);
+        return convert(resourceKind, plan, PlaceholderMode.POSITIONAL, "");
+    }
+
+    public CerbosSqlFilter convertPositional(String resourceKind, JsonNode plan, String sqlAlias) {
+        return convert(resourceKind, plan, PlaceholderMode.POSITIONAL, sqlAlias);
     }
 
     private CerbosSqlFilter convert(String resourceKind, JsonNode plan, PlaceholderMode placeholderMode) {
+        return convert(resourceKind, plan, placeholderMode, "");
+    }
+
+    private CerbosSqlFilter convert(String resourceKind, JsonNode plan, PlaceholderMode placeholderMode, String sqlAlias) {
         JsonNode filter = plan.path("filter");
         String kind = filter.path("kind").asText("");
 
@@ -37,7 +45,7 @@ public class CerbosPlanToSqlConverter {
             throw new IllegalArgumentException("Unsupported Cerbos plan kind: " + kind);
         }
 
-        Context context = new Context(resourceKind, placeholderMode);
+        Context context = new Context(resourceKind, placeholderMode, sqlAlias);
         String whereSql = expressionNode(filter.path("condition"), context);
         return new CerbosSqlFilter(false, whereSql, context.namedParams, context.positionalParams);
     }
@@ -164,6 +172,7 @@ public class CerbosPlanToSqlConverter {
             String variable = node.path("variable").asText();
             String column = columnRegistry.columnFor(context.resourceKind, variable)
                     .orElseThrow(() -> new IllegalArgumentException("Unsupported or unsafe Cerbos variable: " + variable));
+            column = context.qualify(column);
             return new Operand(column, column, null, null);
         }
         if (node.has("value")) {
@@ -223,13 +232,15 @@ public class CerbosPlanToSqlConverter {
     private static final class Context {
         private final String resourceKind;
         private final PlaceholderMode placeholderMode;
+        private final String sqlAlias;
         private final Map<String, Object> namedParams = new LinkedHashMap<>();
         private final List<Object> positionalParams = new ArrayList<>();
         private int nextParameterIndex = 0;
 
-        private Context(String resourceKind, PlaceholderMode placeholderMode) {
+        private Context(String resourceKind, PlaceholderMode placeholderMode, String sqlAlias) {
             this.resourceKind = resourceKind;
             this.placeholderMode = placeholderMode;
+            this.sqlAlias = sqlAlias == null ? "" : sqlAlias;
         }
 
         private String addParam(Object value) {
@@ -240,6 +251,15 @@ public class CerbosPlanToSqlConverter {
             String name = "cp" + nextParameterIndex++;
             namedParams.put(name, value);
             return "#{params." + name + "}";
+        }
+
+        private String qualify(String column) {
+            if (sqlAlias.isBlank()) {
+                return column;
+            }
+            int separator = column.lastIndexOf('.');
+            String columnName = separator >= 0 ? column.substring(separator + 1) : column;
+            return sqlAlias + "." + columnName;
         }
     }
 }

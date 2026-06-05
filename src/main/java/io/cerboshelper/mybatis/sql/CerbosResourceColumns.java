@@ -1,7 +1,7 @@
 package io.cerboshelper.mybatis.sql;
 
-import io.cerboshelper.mybatis.annotation.CerbosAttribute;
-import io.cerboshelper.mybatis.annotation.CerbosResource;
+import io.cerboshelper.mybatis.convention.CerbosCommonResource;
+import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -38,11 +38,8 @@ public final class CerbosResourceColumns implements CerbosResourceColumnRegistry
         private final Map<String, Map<String, String>> columnsByKind = new LinkedHashMap<>();
 
         public Builder resource(Class<?> resourceType) {
-            CerbosResource resource = resourceType.getAnnotation(CerbosResource.class);
-            if (resource == null) {
-                throw new IllegalArgumentException("@CerbosResource is required on " + resourceType.getName());
-            }
-            return resource(resource.kind(), resourceType, resource.sqlAlias());
+            String resourceKind = decapitalize(resourceType.getSimpleName());
+            return resource(resourceKind, resourceType, resourceKind);
         }
 
         public Builder resource(String resourceKind, Class<?> resourceType) {
@@ -53,7 +50,12 @@ public final class CerbosResourceColumns implements CerbosResourceColumnRegistry
             if (resourceKind == null || resourceKind.isBlank()) {
                 throw new IllegalArgumentException("resourceKind must not be blank");
             }
-            columnsByKind.put(resourceKind, inspect(resourceKind, resourceType, sqlAlias));
+            columnsByKind.put(resourceKind, inspect(resourceType, qualifier(resourceKind, sqlAlias)));
+            return this;
+        }
+
+        public Builder resource(CerbosCommonResource resource) {
+            columnsByKind.put(resource.resourceKind(), inspect(resource.resourceType(), resource.sqlAlias()));
             return this;
         }
 
@@ -69,47 +71,50 @@ public final class CerbosResourceColumns implements CerbosResourceColumnRegistry
             return new CerbosResourceColumns(Map.copyOf(copy));
         }
 
-        private Map<String, String> inspect(String resourceKind, Class<?> resourceType, String sqlAlias) {
+        private Map<String, String> inspect(Class<?> resourceType, String sqlAlias) {
             Map<String, String> columns = new LinkedHashMap<>();
-            String qualifier = sqlAlias == null || sqlAlias.isBlank() ? resourceKind : sqlAlias;
+            String qualifier = sqlAlias == null || sqlAlias.isBlank() ? "" : sqlAlias;
             if (resourceType.isRecord()) {
                 for (RecordComponent component : resourceType.getRecordComponents()) {
-                    CerbosAttribute attribute = component.getAnnotation(CerbosAttribute.class);
-                    if (attribute != null && attribute.ignore()) {
-                        continue;
-                    }
-                    addColumn(columns, component.getName(), attribute, qualifier);
+                    addColumn(columns, component.getName(), null, qualifier);
                 }
                 return columns;
             }
 
-            for (Field field : resourceType.getDeclaredFields()) {
-                if (field.isSynthetic() || Modifier.isStatic(field.getModifiers())) {
-                    continue;
+            for (Class<?> current = resourceType; current != null && current != Object.class; current = current.getSuperclass()) {
+                for (Field field : current.getDeclaredFields()) {
+                    if (field.isSynthetic() || Modifier.isStatic(field.getModifiers())) {
+                        continue;
+                    }
+                    addColumn(columns, field.getName(), null, qualifier);
                 }
-                CerbosAttribute attribute = field.getAnnotation(CerbosAttribute.class);
-                if (attribute != null && attribute.ignore()) {
-                    continue;
-                }
-                addColumn(columns, field.getName(), attribute, qualifier);
             }
             for (Method method : resourceType.getMethods()) {
-                CerbosAttribute attribute = method.getAnnotation(CerbosAttribute.class);
-                if (attribute == null || attribute.ignore()) {
+                if (method.getDeclaringClass() == Object.class || method.getParameterCount() != 0) {
                     continue;
                 }
-                addColumn(columns, methodNameToProperty(method.getName()), attribute, qualifier);
+                String propertyName = methodNameToProperty(method.getName());
+                if (columns.containsKey(RESOURCE_ATTR_PREFIX + propertyName)) {
+                    continue;
+                }
+                addColumn(columns, propertyName, null, qualifier);
             }
             return columns;
         }
 
-        private void addColumn(Map<String, String> columns, String defaultAttributeName, CerbosAttribute attribute, String qualifier) {
-            String attributeName = attribute != null && !attribute.value().isBlank()
-                    ? attribute.value()
-                    : defaultAttributeName;
-            String column = attribute != null && !attribute.column().isBlank()
-                    ? attribute.column()
-                    : qualify(qualifier, camelToSnake(attributeName));
+        private String qualifier(String resourceKind, String sqlAlias) {
+            return sqlAlias == null || sqlAlias.isBlank() ? resourceKind : sqlAlias;
+        }
+
+        private void addColumn(Map<String, String> columns, String attributeName, String explicitColumn, String qualifier) {
+            String defaultColumn = switch (attributeName) {
+                case CerbosCommonResourceRegistry.OWNER_BY_ATTR -> CerbosCommonResourceRegistry.OWNER_BY_COLUMN;
+                case CerbosCommonResourceRegistry.OWNER_ORG_BY_ATTR -> CerbosCommonResourceRegistry.OWNER_ORG_BY_COLUMN;
+                default -> camelToSnake(attributeName);
+            };
+            String column = explicitColumn != null && !explicitColumn.isBlank()
+                    ? explicitColumn
+                    : qualify(qualifier, defaultColumn);
             columns.put(RESOURCE_ATTR_PREFIX + attributeName, column);
         }
 

@@ -1,23 +1,16 @@
 package io.cerboshelper.mybatis.check;
 
-import io.cerboshelper.mybatis.annotation.CerbosCheck;
-import io.cerboshelper.mybatis.annotation.CerbosChecks;
-import io.cerboshelper.mybatis.annotation.CerbosResource;
 import io.cerboshelper.mybatis.auth.CerbosAuthorizationClient;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalEnvelope;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalResolver;
+import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
 import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
-import org.aspectj.lang.ProceedingJoinPoint;
-import org.aspectj.lang.annotation.Around;
-import org.aspectj.lang.annotation.Aspect;
-import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.beans.factory.BeanFactory;
 
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Optional;
 
-@Aspect
 public class CerbosCheckAspect {
     private final CerbosAuthorizationClient authorizationClient;
     private final CerbosPrincipalResolver principalResolver;
@@ -33,33 +26,30 @@ public class CerbosCheckAspect {
         this.expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
     }
 
-    @Around("@annotation(io.cerboshelper.mybatis.annotation.CerbosCheck) || @annotation(io.cerboshelper.mybatis.annotation.CerbosChecks)")
-    public Object check(ProceedingJoinPoint joinPoint) throws Throwable {
-        Method method = ((MethodSignature) joinPoint.getSignature()).getMethod();
-        CerbosCheck[] checks = method.getAnnotationsByType(CerbosCheck.class);
-        CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, joinPoint.getArgs());
-        for (CerbosCheck check : checks) {
-            Object principal = expressionEvaluator.principal(check.principal(), context, principalResolver);
-            for (Object resource : requireResources(method, resourceResolver.resolve(new CerbosResourceResolutionRequest(check, method, joinPoint.getArgs(), context)))) {
-                if (!authorizationClient.isAllowed(principal, resource, check.action())) {
-                    throw accessDeniedHandler.denied(new CerbosDeniedDecision(
-                            check.action(),
-                            principal,
-                            resource,
-                            describe(principal),
-                            describe(resource)
-                    ));
-                }
+    public void authorize(Method method, Object[] args, CerbosMethodExpressionEvaluator.Context context, CerbosCheckSpec check) {
+        Object principal = expressionEvaluator.principal(check.principal(), context, principalResolver);
+        for (Object resource : requireResources(method, resourceResolver.resolve(new CerbosResourceResolutionRequest(check, method, args, context)))) {
+            if (!authorizationClient.isAllowed(principal, resource, check.action())) {
+                throw accessDeniedHandler.denied(new CerbosDeniedDecision(
+                        check.action(),
+                        principal,
+                        resource,
+                        describe(principal),
+                        describe(resource)
+                ));
             }
         }
-        return joinPoint.proceed();
+    }
+
+    public CerbosMethodExpressionEvaluator.Context context(Method method, Object[] args) {
+        return expressionEvaluator.context(method, args);
     }
 
     private List<Object> requireResources(Method method, List<Object> resources) {
         if (resources.isEmpty()) {
             throw new IllegalArgumentException("Cannot resolve Cerbos resource for " + method.getDeclaringClass().getName() + "." + method.getName()
-                    + "(). Register a CerbosResourceResolver bean, use a @CerbosResource method argument, "
-                    + "@CerbosCheck(resourceKind = \"...\", id = \"...\"), or @CerbosCheck(resource = \"...\").");
+                    + "(). Register a CerbosResourceResolver bean, pass a CerbosCommonDto argument, "
+                    + "or use a {resource}Id parameter that matches a {resource}Mapper.findById(...) bean.");
         }
         return resources;
     }
@@ -72,9 +62,8 @@ public class CerbosCheckAspect {
             return value.getClass().getSimpleName() + "(id=" + envelope.id() + ", roles=" + envelope.roles() + ")";
         }
         String id = readId(value).map(Object::toString).orElse("unknown");
-        CerbosResource resource = value.getClass().getAnnotation(CerbosResource.class);
-        if (resource != null) {
-            return value.getClass().getSimpleName() + "(kind=" + resource.kind() + ", id=" + id + ")";
+        if (CerbosCommonResourceRegistry.isCommonResourceType(value.getClass())) {
+            return value.getClass().getSimpleName() + "(kind=" + decapitalize(value.getClass().getSimpleName()) + ", id=" + id + ")";
         }
         return value.getClass().getSimpleName() + "(id=" + id + ")";
     }
@@ -88,6 +77,13 @@ public class CerbosCheckAspect {
             }
         }
         return Optional.empty();
+    }
+
+    private String decapitalize(String value) {
+        if (value == null || value.isBlank()) {
+            return value;
+        }
+        return value.substring(0, 1).toLowerCase(java.util.Locale.ROOT) + value.substring(1);
     }
 
 }

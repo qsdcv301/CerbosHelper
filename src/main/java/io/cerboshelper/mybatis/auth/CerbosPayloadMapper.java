@@ -1,7 +1,6 @@
 package io.cerboshelper.mybatis.auth;
 
-import io.cerboshelper.mybatis.annotation.CerbosAttribute;
-import io.cerboshelper.mybatis.annotation.CerbosResource;
+import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -14,9 +13,15 @@ import java.util.Map;
 
 public class CerbosPayloadMapper {
     private final CerbosHelperProperties properties;
+    private final CerbosCommonResourceRegistry registry;
 
     public CerbosPayloadMapper(CerbosHelperProperties properties) {
+        this(properties, new CerbosCommonResourceRegistry(List.of()));
+    }
+
+    public CerbosPayloadMapper(CerbosHelperProperties properties, CerbosCommonResourceRegistry registry) {
         this.properties = properties;
+        this.registry = registry;
     }
 
     public Map<String, Object> principalPayload(Object principal) {
@@ -38,14 +43,12 @@ public class CerbosPayloadMapper {
     }
 
     public Map<String, Object> resourcePayload(Object resource) {
-        CerbosResource annotation = resource.getClass().getAnnotation(CerbosResource.class);
-        if (annotation == null) {
-            throw new IllegalArgumentException("@CerbosResource is required on " + resource.getClass().getName());
-        }
+        String resourceKind = registry.resourceKindForType(resource.getClass())
+                .orElseThrow(() -> new IllegalArgumentException("Cerbos resource must extend CerbosCommonDto: " + resource.getClass().getName()));
         Map<String, Object> attr = attributes(resource);
         return Map.of(
                 "id", String.valueOf(requireAny(attr, "id")),
-                "kind", annotation.kind(),
+                "kind", resourceKind,
                 "policyVersion", properties.getPolicyVersion(),
                 "attr", attr
         );
@@ -60,29 +63,23 @@ public class CerbosPayloadMapper {
         Class<?> type = value.getClass();
         if (type.isRecord()) {
             for (RecordComponent component : type.getRecordComponents()) {
-                CerbosAttribute attribute = component.getAnnotation(CerbosAttribute.class);
-                if (attribute != null && attribute.ignore()) {
-                    continue;
-                }
-                attributes.put(attributeName(component.getName(), attribute), invoke(component.getAccessor(), value));
+                attributes.put(component.getName(), invoke(component.getAccessor(), value));
             }
             addAnnotatedMethods(value, attributes);
             return attributes;
         }
 
-        for (Field field : type.getDeclaredFields()) {
-            if (field.isSynthetic() || Modifier.isStatic(field.getModifiers())) {
-                continue;
-            }
-            CerbosAttribute attribute = field.getAnnotation(CerbosAttribute.class);
-            if (attribute != null && attribute.ignore()) {
-                continue;
-            }
-            field.setAccessible(true);
-            try {
-                attributes.put(attributeName(field.getName(), attribute), field.get(value));
-            } catch (IllegalAccessException exception) {
-                throw new IllegalStateException("Cannot read Cerbos attribute field: " + field.getName(), exception);
+        for (Class<?> current = type; current != null && current != Object.class; current = current.getSuperclass()) {
+            for (Field field : current.getDeclaredFields()) {
+                if (field.isSynthetic() || Modifier.isStatic(field.getModifiers())) {
+                    continue;
+                }
+                field.setAccessible(true);
+                try {
+                    attributes.putIfAbsent(field.getName(), field.get(value));
+                } catch (IllegalAccessException exception) {
+                    throw new IllegalStateException("Cannot read Cerbos attribute field: " + field.getName(), exception);
+                }
             }
         }
         addAnnotatedMethods(value, attributes);
@@ -91,16 +88,15 @@ public class CerbosPayloadMapper {
 
     private void addAnnotatedMethods(Object value, Map<String, Object> attributes) {
         for (Method method : value.getClass().getMethods()) {
-            CerbosAttribute attribute = method.getAnnotation(CerbosAttribute.class);
-            if (attribute == null || attribute.ignore()) {
+            if (method.getDeclaringClass() == Object.class || method.getParameterCount() != 0) {
                 continue;
             }
-            attributes.put(attributeName(methodNameToProperty(method.getName()), attribute), invoke(method, value));
+            String propertyName = methodNameToProperty(method.getName());
+            if (attributes.containsKey(propertyName)) {
+                continue;
+            }
+            attributes.put(propertyName, invoke(method, value));
         }
-    }
-
-    private String attributeName(String defaultName, CerbosAttribute attribute) {
-        return attribute != null && !attribute.value().isBlank() ? attribute.value() : defaultName;
     }
 
     private Object requireAny(Map<String, Object> attributes, String... names) {

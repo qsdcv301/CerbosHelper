@@ -9,12 +9,22 @@ WHERE document.deleted = false
 ORDER BY document.id
 ```
 
+기본 injector는 top-level `FROM` / `JOIN`의 resource table alias를 자동 감지한다.
+
+```sql
+SELECT d.*
+FROM document d
+ORDER BY d.id
+```
+
+기본 흐름은 alias를 먼저 감지한 뒤 Cerbos predicate 생성 단계에서 바로 `d.owner_by = ?`를 사용한다. `FROM user_memo AS memo` 같은 `AS` alias도 같은 방식으로 처리한다.
+
 복잡한 SQL은 default injector에 하드코딩하지 않고 `CerbosSqlPredicateInjector` 구현으로 분리한다.
 
 ## 기본 원칙
 
 - Cerbos predicate가 참조하는 column은 필터 적용 위치에 반드시 존재해야 한다.
-- `request.resource.attr.*`와 SQL column 매핑은 `CerbosResourceColumnRegistry`로 명확히 고정한다.
+- `request.resource.attr.*`와 SQL column 매핑은 `owner_by`, `owner_org_by` 고정 규칙을 우선 사용한다.
 - aggregate 결과처럼 원본 resource row가 사라진 결과에는 직접 scope를 걸지 않는다.
 - 구현이 애매하면 먼저 visible resource id 목록을 구하고, 그 id로 후속 집계를 수행한다.
 
@@ -41,7 +51,8 @@ final class WrappingCerbosSqlPredicateInjector implements CerbosSqlPredicateInje
 CerbosResourceColumnRegistry cerbosResourceColumnRegistry() {
     return CerbosResourceColumnRegistry.builder()
             .column("document", "request.resource.attr.companyId", "scoped.company_id")
-            .column("document", "request.resource.attr.ownerUserId", "scoped.owner_user_id")
+            .column("document", "request.resource.attr.ownerBy", "scoped.owner_by")
+            .column("document", "request.resource.attr.ownerOrgBy", "scoped.owner_org_by")
             .build();
 }
 ```
@@ -50,12 +61,7 @@ CerbosResourceColumnRegistry cerbosResourceColumnRegistry() {
 
 CTE 내부에서 원본 resource row가 유지된다면 CTE를 대상으로 predicate를 넣을 수 있다.
 
-권장 방식은 원본 resource row 조회 mapper를 분리해 그 mapper에 `@CerbosScoped`를 붙이는 것이다.
-
-```java
-@CerbosScoped(resourceKind = "document", action = "view")
-List<Long> findVisibleDocumentIds(DocumentSearchCondition condition);
-```
+권장 방식은 원본 resource row 조회 mapper를 분리하고, `findVisibleDocumentIds`처럼 resource 이름을 포함한 사내 네이밍 규칙을 사용해 자동 scope 대상이 되게 하는 것이다.
 
 한 SQL 안에서 처리해야 한다면 custom injector가 CTE의 resource row 단계에 predicate를 삽입해야 한다. outer aggregate나 outer projection에 predicate를 붙이면 권한 의미가 달라질 수 있다.
 
@@ -63,18 +69,17 @@ List<Long> findVisibleDocumentIds(DocumentSearchCondition condition);
 
 같은 resource kind와 같은 column shape를 합치는 `UNION ALL`은 branch별로 같은 predicate를 삽입하는 custom injector로 구현할 수 있다.
 
-하지만 branch마다 alias가 다르면 하나의 predicate 문자열을 그대로 재사용하기 어렵다. 이 경우 branch별 mapper를 분리하거나 branch별 registry/injector 규칙을 명확히 둔다.
+하지만 branch마다 alias가 다르면 하나의 predicate 문자열을 그대로 재사용하기 어렵다. 이 경우 branch별 mapper를 분리하거나 custom injector 규칙을 명확히 둔다.
 
 서로 다른 resource kind가 섞인 `UNION`은 하나의 `resourceKind/action` plan으로 표현하기 어렵다. resource kind별로 조회한 뒤 application layer에서 합치는 쪽이 안전하다.
 
 ## GROUP BY
 
-`GROUP BY` 결과는 원본 resource row가 아니다. 따라서 aggregate 결과에 직접 `@CerbosScoped`를 붙이지 않는다.
+`GROUP BY` 결과는 원본 resource row가 아니다. 따라서 aggregate 결과를 자동 scope 대상으로 만들지 않는다.
 
 안전한 패턴은 다음과 같다.
 
 ```java
-@CerbosScoped(resourceKind = "document", action = "view")
 List<Long> findVisibleDocumentIds(DocumentSearchCondition condition);
 
 List<DocumentSummary> summarizeByVisibleDocumentIds(List<Long> visibleDocumentIds);

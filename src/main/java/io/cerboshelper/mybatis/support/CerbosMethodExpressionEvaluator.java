@@ -64,7 +64,7 @@ public final class CerbosMethodExpressionEvaluator {
             return firstArgument;
         }
         throw new IllegalArgumentException("Cannot resolve Cerbos principal. Register a CerbosPrincipalResolver bean for the current application user, "
-                + "or provide one of: @CerbosCheck(principal = \"...\"), @CerbosScope(principal = \"...\"), a method parameter named principal, or a first argument principal. "
+                + "or provide a method parameter named principal or a first argument principal. "
                 + "If parameter names are not visible, enable Java compiler option -parameters.");
     }
 
