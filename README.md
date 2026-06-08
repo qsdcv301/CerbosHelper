@@ -33,7 +33,7 @@ public class Document extends CerbosCommonDto {
 
 `resourceKind`는 DTO 클래스명에서 `Dto` suffix를 제거한 뒤 lower camel로 만든다. 예를 들어 `DocumentDto`는 `document`가 된다.
 
-resource id는 기본적으로 `id` / `getId()` / `id()`에서 읽는다. `v1.0.10`부터는 애플리케이션의 MyBatis `resultMap`에 단일 `<id property="...">`가 있으면 그 property를 해당 DTO의 resource id로 자동 등록한다.
+resource id는 기본적으로 `id` / `getId()` / `id()`에서 읽는다. `v1.0.11`부터는 애플리케이션의 MyBatis `resultMap`에 단일 `<id property="...">`가 있으면 그 property를 해당 DTO의 resource id로 자동 등록한다.
 
 ```xml
 <resultMap id="userMemoDtoResultMap" type="com.example.UserMemoDto">
@@ -83,7 +83,7 @@ ORDER BY d.id
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.10'
+    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.11'
 }
 ```
 

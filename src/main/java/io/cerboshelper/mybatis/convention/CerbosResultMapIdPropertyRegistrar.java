@@ -29,7 +29,11 @@ public final class CerbosResultMapIdPropertyRegistrar {
         if (sqlSessionFactory == null || sqlSessionFactory.getConfiguration() == null) {
             return;
         }
-        sqlSessionFactory.getConfiguration().getResultMaps().forEach(this::register);
+        for (Object candidate : sqlSessionFactory.getConfiguration().getResultMaps()) {
+            if (candidate instanceof ResultMap resultMap) {
+                register(resultMap);
+            }
+        }
     }
 
     private void register(ResultMap resultMap) {

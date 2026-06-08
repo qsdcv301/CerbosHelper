@@ -36,6 +36,20 @@ class CerbosResultMapIdPropertyRegistrarTest {
     }
 
     @Test
+    void skipsMyBatisAmbiguousShortResultMapNames() {
+        CerbosCommonResourceRegistry registry = new CerbosCommonResourceRegistry(List.of(UserMemoDto.class));
+        Configuration configuration = new Configuration();
+        configuration.addResultMap(resultMap(configuration, "memo.userMemoDtoResultMap", UserMemoDto.class,
+                idMapping(configuration, "userMemoId")));
+        configuration.addResultMap(resultMap(configuration, "archive.userMemoDtoResultMap", UserMemoDto.class,
+                idMapping(configuration, "userMemoId")));
+
+        new CerbosResultMapIdPropertyRegistrar(registry).register(new DefaultSqlSessionFactory(configuration));
+
+        assertEquals("userMemoId", registry.idPropertyForType(UserMemoDto.class).orElseThrow());
+    }
+
+    @Test
     void resourcePayloadUsesRegisteredResultMapIdProperty() {
         CerbosCommonResourceRegistry registry = new CerbosCommonResourceRegistry(List.of(UserMemoDto.class));
         registry.registerIdProperty(UserMemoDto.class, "userMemoId");
