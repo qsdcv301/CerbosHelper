@@ -24,7 +24,11 @@ public final class CerbosCheckConventionResolver {
         Optional<ResourceArgument> resourceArgument = resourceArgument(method, context);
         if (resourceArgument.isPresent()) {
             String idVariable = idVariableFor(resourceArgument.get().resourceKind(), context)
-                    .orElseGet(() -> idExpressionForResourceArgument(action, resourceArgument.get().variableName()));
+                    .orElseGet(() -> idExpressionForResourceArgument(
+                            action,
+                            resourceArgument.get().variableName(),
+                            resourceArgument.get().resourceKind()
+                    ));
             return Optional.of(new CerbosCheckSpec(action, "", resourceArgument.get().variableName(), "", idVariable, "", "findById"));
         }
         Optional<IdReference> idReference = idReference(method, context);
@@ -83,8 +87,11 @@ public final class CerbosCheckConventionResolver {
                 .findFirst();
     }
 
-    private String idExpressionForResourceArgument(String action, String variableName) {
-        return usesExistingResource(action) ? "#" + variableName + ".id" : "";
+    private String idExpressionForResourceArgument(String action, String variableName, String resourceKind) {
+        if (!usesExistingResource(action)) {
+            return "";
+        }
+        return "#" + variableName + "." + registry.idPropertyForKind(resourceKind).orElse("id");
     }
 
     private boolean usesExistingResource(String action) {

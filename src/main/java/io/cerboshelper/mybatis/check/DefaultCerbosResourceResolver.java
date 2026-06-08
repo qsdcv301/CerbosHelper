@@ -14,10 +14,16 @@ import java.util.Optional;
 public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
     private final BeanFactory beanFactory;
     private final CerbosMethodExpressionEvaluator expressionEvaluator;
+    private final CerbosCommonResourceRegistry registry;
 
     public DefaultCerbosResourceResolver(BeanFactory beanFactory, CerbosMethodExpressionEvaluator expressionEvaluator) {
+        this(beanFactory, expressionEvaluator, new CerbosCommonResourceRegistry(List.of()));
+    }
+
+    public DefaultCerbosResourceResolver(BeanFactory beanFactory, CerbosMethodExpressionEvaluator expressionEvaluator, CerbosCommonResourceRegistry registry) {
         this.beanFactory = beanFactory;
         this.expressionEvaluator = expressionEvaluator;
+        this.registry = registry == null ? new CerbosCommonResourceRegistry(List.of()) : registry;
     }
 
     @Override
@@ -77,7 +83,7 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
     private Optional<IdReference> idReference(CerbosCheckSpec check, CerbosMethodExpressionEvaluator.Context context) {
         if (!check.resourceKind().isBlank() && !check.id().isBlank()) {
             String resourceKind = check.resourceKind();
-            Object id = tokenOrExpression(check.id(), context);
+            Object id = idValue(check.id(), context);
             requireResolvedId(id, check.id(), resourceKind);
             return Optional.of(new IdReference(
                     resourceKind,
@@ -87,7 +93,7 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
             ));
         }
         if (!check.id().isBlank()) {
-            Object id = tokenOrExpression(check.id(), context);
+            Object id = idValue(check.id(), context);
             requireResolvedId(id, check.id(), "");
             return inferResourceKindForId(context)
                     .map(resourceKind -> new IdReference(resourceKind, mapperBeanName(check, resourceKind), finderName(check), id));
@@ -140,6 +146,42 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
         }
         Object variable = context.variable(value);
         return variable != null ? variable : value;
+    }
+
+    private Object idValue(String value, CerbosMethodExpressionEvaluator.Context context) {
+        IdResolution registeredId = registeredResourceId(value, context);
+        if (registeredId.resolved()) {
+            return registeredId.value();
+        }
+        Object id = tokenOrExpression(value, context);
+        if (id instanceof CerbosCommonDto commonResource) {
+            return registry.resourceId(commonResource).orElse(null);
+        }
+        return id;
+    }
+
+    private IdResolution registeredResourceId(String value, CerbosMethodExpressionEvaluator.Context context) {
+        if (value == null || !value.startsWith("#") || value.startsWith("@")) {
+            return IdResolution.unresolved();
+        }
+        String expression = value.substring(1);
+        int separator = expression.indexOf('.');
+        String variableName = separator >= 0 ? expression.substring(0, separator) : expression;
+        String propertyName = separator >= 0 ? expression.substring(separator + 1) : "";
+        if (variableName.isBlank() || variableName.contains("[") || variableName.contains("]") || propertyName.contains(".")) {
+            return IdResolution.unresolved();
+        }
+        Object resource = context.variable(variableName);
+        if (!(resource instanceof CerbosCommonDto)) {
+            return IdResolution.unresolved();
+        }
+        if (!propertyName.isBlank()) {
+            Optional<String> registeredProperty = registry.idPropertyForType(resource.getClass());
+            if (registeredProperty.isEmpty() || !registeredProperty.get().equals(propertyName)) {
+                return IdResolution.unresolved();
+            }
+        }
+        return IdResolution.resolved(registry.resourceId(resource).orElse(null));
     }
 
     private Object applyIdIfPossible(Object resource, CerbosCheckSpec check, CerbosMethodExpressionEvaluator.Context context) {
@@ -208,5 +250,15 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
     }
 
     private record IdReference(String resourceKind, String mapperBeanName, String finderName, Object id) {
+    }
+
+    private record IdResolution(boolean resolved, Object value) {
+        private static IdResolution unresolved() {
+            return new IdResolution(false, null);
+        }
+
+        private static IdResolution resolved(Object value) {
+            return new IdResolution(true, value);
+        }
     }
 }

@@ -15,6 +15,7 @@ import io.cerboshelper.mybatis.check.CerbosResourceResolver;
 import io.cerboshelper.mybatis.check.DefaultCerbosResourceResolver;
 import io.cerboshelper.mybatis.convention.CerbosCheckConventionResolver;
 import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
+import io.cerboshelper.mybatis.convention.CerbosResultMapIdPropertyRegistrar;
 import io.cerboshelper.mybatis.convention.CerbosScopeConventionResolver;
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
 import io.cerboshelper.mybatis.scope.CerbosMyBatisInterceptorOrderStrategy;
@@ -108,8 +109,8 @@ public class CerbosHelperAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    CerbosResourceResolver cerbosResourceResolver(BeanFactory beanFactory) {
-        return new DefaultCerbosResourceResolver(beanFactory, new CerbosMethodExpressionEvaluator(beanFactory));
+    CerbosResourceResolver cerbosResourceResolver(BeanFactory beanFactory, CerbosCommonResourceRegistry registry) {
+        return new DefaultCerbosResourceResolver(beanFactory, new CerbosMethodExpressionEvaluator(beanFactory), registry);
     }
 
     @Bean
@@ -150,6 +151,12 @@ public class CerbosHelperAutoConfiguration {
     @ConditionalOnMissingBean
     CerbosMyBatisInterceptorOrderStrategy cerbosMyBatisInterceptorOrderStrategy() {
         return new DefaultCerbosMyBatisInterceptorOrderStrategy();
+    }
+
+    @Bean
+    @ConditionalOnBean(SqlSessionFactory.class)
+    SmartInitializingSingleton cerbosHelperResultMapIdPropertyRegistrar(List<SqlSessionFactory> sqlSessionFactories, CerbosCommonResourceRegistry registry) {
+        return () -> new CerbosResultMapIdPropertyRegistrar(registry).register(sqlSessionFactories);
     }
 
     private List<Class<?>> scanCommonResourceTypes(BeanFactory beanFactory) {

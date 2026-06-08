@@ -1,6 +1,7 @@
 package io.cerboshelper.mybatis.check;
 
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
+import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
 import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
@@ -11,6 +12,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DefaultCerbosResourceResolverTest {
     @Test
@@ -66,6 +68,44 @@ class DefaultCerbosResourceResolverTest {
         assertEquals(0, ((DocumentDto) resources.get(0)).id());
     }
 
+    @Test
+    void registeredResultMapIdPropertyCanResolvePrivateDtoFieldWithoutGetIdOverride() throws Exception {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        beanFactory.registerSingleton("privateMemoMapper", new PrivateMemoMapper());
+        CerbosCommonResourceRegistry registry = new CerbosCommonResourceRegistry(List.of(PrivateMemoDto.class));
+        registry.registerIdProperty(PrivateMemoDto.class, "privateMemoId");
+        CerbosMethodExpressionEvaluator expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
+        DefaultCerbosResourceResolver resolver = new DefaultCerbosResourceResolver(beanFactory, expressionEvaluator, registry);
+        Method method = DocumentService.class.getDeclaredMethod("updatePrivateMemo", PrivateMemoDto.class);
+        PrivateMemoDto update = new PrivateMemoDto(30);
+        CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, new Object[]{update});
+        CerbosCheckSpec check = new CerbosCheckSpec("update", "", "privateMemo", "", "#privateMemo.privateMemoId", "", "findById");
+
+        List<Object> resources = resolver.resolve(new CerbosResourceResolutionRequest(check, method, new Object[]{update}, context));
+
+        assertEquals(1, resources.size());
+        assertInstanceOf(PrivateMemoDto.class, resources.get(0));
+        assertEquals(30, ((PrivateMemoDto) resources.get(0)).privateMemoId);
+    }
+
+    @Test
+    void registeredResultMapIdPropertyFailsClosedWhenExistingResourceIdIsNull() throws Exception {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        CerbosCommonResourceRegistry registry = new CerbosCommonResourceRegistry(List.of(PrivateMemoDto.class));
+        registry.registerIdProperty(PrivateMemoDto.class, "privateMemoId");
+        CerbosMethodExpressionEvaluator expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
+        DefaultCerbosResourceResolver resolver = new DefaultCerbosResourceResolver(beanFactory, expressionEvaluator, registry);
+        Method method = DocumentService.class.getDeclaredMethod("updatePrivateMemo", PrivateMemoDto.class);
+        PrivateMemoDto update = new PrivateMemoDto(null);
+        CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, new Object[]{update});
+        CerbosCheckSpec check = new CerbosCheckSpec("update", "", "privateMemo", "", "#privateMemo.privateMemoId", "", "findById");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> resolver.resolve(new CerbosResourceResolutionRequest(check, method, new Object[]{update}, context))
+        );
+    }
+
     static class DocumentService {
         @SuppressWarnings("unused")
         void updateDocument(long documentId, DocumentDto document) {
@@ -77,6 +117,10 @@ class DefaultCerbosResourceResolverTest {
 
         @SuppressWarnings("unused")
         void createDocument(DocumentDto document) {
+        }
+
+        @SuppressWarnings("unused")
+        void updatePrivateMemo(PrivateMemoDto privateMemo) {
         }
     }
 
@@ -96,6 +140,21 @@ class DefaultCerbosResourceResolverTest {
 
         public long id() {
             return id;
+        }
+    }
+
+    static class PrivateMemoMapper {
+        @SuppressWarnings("unused")
+        public Optional<PrivateMemoDto> findById(Integer id) {
+            return Optional.of(new PrivateMemoDto(id));
+        }
+    }
+
+    static class PrivateMemoDto extends CerbosCommonDto {
+        private final Integer privateMemoId;
+
+        PrivateMemoDto(Integer privateMemoId) {
+            this.privateMemoId = privateMemoId;
         }
     }
 }

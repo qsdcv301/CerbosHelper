@@ -46,8 +46,9 @@ public class CerbosPayloadMapper {
         String resourceKind = registry.resourceKindForType(resource.getClass())
                 .orElseThrow(() -> new IllegalArgumentException("Cerbos resource must extend CerbosCommonDto: " + resource.getClass().getName()));
         Map<String, Object> attr = attributes(resource);
+        Object resourceId = resourceId(resource, attr);
         return Map.of(
-                "id", String.valueOf(requireAny(attr, "id")),
+                "id", String.valueOf(resourceId),
                 "kind", resourceKind,
                 "policyVersion", properties.getPolicyVersion(),
                 "attr", attr
@@ -55,7 +56,20 @@ public class CerbosPayloadMapper {
     }
 
     public String resourceId(Object resource) {
-        return String.valueOf(requireAny(attributes(resource), "id"));
+        return String.valueOf(resourceId(resource, attributes(resource)));
+    }
+
+    private Object resourceId(Object resource, Map<String, Object> attributes) {
+        OptionalValue id = value(attributes, "id");
+        if (id.present() && id.value() != null) {
+            return id.value();
+        }
+        java.util.Optional<String> resultMapIdProperty = registry.idPropertyForType(resource.getClass());
+        if (resultMapIdProperty.isPresent()) {
+            OptionalValue resultMapId = value(attributes, resultMapIdProperty.get());
+            return resultMapId.present() && resultMapId.value() != null ? resultMapId.value() : "new";
+        }
+        throw new IllegalArgumentException("Missing Cerbos id attribute. Expected an id/getId property or a single MyBatis resultMap <id> property.");
     }
 
     private Map<String, Object> attributes(Object value) {
@@ -109,6 +123,10 @@ public class CerbosPayloadMapper {
         throw new IllegalArgumentException("Missing Cerbos id attribute. Expected one of " + List.of(names));
     }
 
+    private OptionalValue value(Map<String, Object> attributes, String name) {
+        return new OptionalValue(attributes.containsKey(name), attributes.get(name));
+    }
+
     private Object invoke(Method method, Object target) {
         try {
             return method.invoke(target);
@@ -132,5 +150,8 @@ public class CerbosPayloadMapper {
             return value;
         }
         return value.substring(0, 1).toLowerCase(Locale.ROOT) + value.substring(1);
+    }
+
+    private record OptionalValue(boolean present, Object value) {
     }
 }

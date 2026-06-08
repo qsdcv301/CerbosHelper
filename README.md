@@ -33,6 +33,18 @@ public class Document extends CerbosCommonDto {
 
 `resourceKind`는 DTO 클래스명에서 `Dto` suffix를 제거한 뒤 lower camel로 만든다. 예를 들어 `DocumentDto`는 `document`가 된다.
 
+resource id는 기본적으로 `id` / `getId()` / `id()`에서 읽는다. `v1.0.10`부터는 애플리케이션의 MyBatis `resultMap`에 단일 `<id property="...">`가 있으면 그 property를 해당 DTO의 resource id로 자동 등록한다.
+
+```xml
+<resultMap id="userMemoDtoResultMap" type="com.example.UserMemoDto">
+    <id property="userMemoId" column="user_memo_id"/>
+    <result property="ownerBy" column="owner_by"/>
+    <result property="ownerOrgBy" column="owner_org_by"/>
+</resultMap>
+```
+
+이 경우 `UserMemoDto`가 `getId()`를 만들지 않아도 `userMemoId`가 Cerbos resource id로 사용된다. Helper는 `*Id` 이름을 추측하지 않는다. 단일 `<id>`만 자동 등록하며, 복합 id는 자동 등록하지 않고, 같은 DTO에 서로 다른 `<id property>`가 선언되면 시작 시 실패시켜 잘못된 권한 판단을 막는다.
+
 ## 2. 자동 적용 규칙
 
 Spring Security가 classpath에 있으면 `SecurityContextHolder`의 현재 `Authentication`을 기본 principal로 사용한다. 기본값은 `Authentication.getName()`을 Cerbos principal id로, authorities를 Cerbos roles로 보낸다. `Authentication.getPrincipal()`이 record, Map, getter 기반 객체이면 읽을 수 있는 단순 값과 단순 list/map 값을 Cerbos attr로 펼쳐 보낸다.
@@ -63,7 +75,7 @@ ORDER BY d.id
 - `update*`, `modify*` -> `update`
 - `delete*`, `remove*` -> `delete`
 - `create*`는 `CerbosCommonDto` 인자에 `ownerBy`가 없으면 현재 principal id를 기본값으로 채운다. `ownerOrgBy`가 없고 DTO가 `getOrgId()` 또는 `getOrganizationId()`를 제공하면 그 값을 기본값으로 채운다.
-- `update*`, `delete*`, `get*`는 `CerbosCommonDto.getId()` / `id()` 또는 `{resource}Id` 인자를 사용해 `{resource}Mapper.findById(...)`로 기존 row를 조회한 뒤 그 row를 검사한다.
+- `update*`, `delete*`, `get*`는 `{resource}Id` 인자, `id` / `getId()` / `id()`, 또는 단일 MyBatis `resultMap <id property="...">`로 등록된 DTO id property를 사용해 `{resource}Mapper.findById(...)`로 기존 row를 조회한 뒤 그 row를 검사한다.
 - 따라서 Cerbos로 보내는 resource payload에는 `ownerBy` / `ownerOrgBy`가 포함되어야 한다. HTTP 요청 DTO가 아니라 Helper가 검사에 사용하는 resource DTO 기준이다.
 - `findAll*`, `debug*`, `trace*`, `admin*`은 자동 check에서 제외한다.
 
@@ -71,7 +83,7 @@ ORDER BY d.id
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.9'
+    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.10'
 }
 ```
 
