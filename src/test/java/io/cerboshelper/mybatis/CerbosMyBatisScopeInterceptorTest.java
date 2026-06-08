@@ -92,7 +92,7 @@ class CerbosMyBatisScopeInterceptorTest {
         );
 
         assertEquals(
-                "SELECT cb.* FROM (SELECT d.* FROM document d WHERE d.deleted = ? ORDER BY d.id) cb WHERE (cb.owner_by = ?)",
+                "SELECT __cerbos_scope.* FROM (SELECT d.* FROM document d WHERE d.deleted = ? ORDER BY d.id) __cerbos_scope WHERE (__cerbos_scope.owner_by = ?)",
                 scoped.getSql()
         );
         assertEquals(2, scoped.getParameterMappings().size());

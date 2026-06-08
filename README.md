@@ -58,7 +58,7 @@ Spring Security가 classpath에 있으면 `SecurityContextHolder`의 현재 `Aut
 - `find{Resource}Ids` 같은 ID 목록 메서드는 메서드명에서 resourceKind를 추론한다.
 - `findAll*`, `selectAll*`, `listAll*`, `debug*`, `trace*`, `admin*`, `findById` 계열은 자동 scope에서 제외한다.
 
-목록 조회 SQL은 기본적으로 `cb` alias를 가진 derived table로 감싼 뒤 outer query에서 Cerbos predicate를 적용한다.
+목록 조회 SQL은 기본적으로 Helper 내부 alias를 가진 derived table로 감싼 뒤 outer query에서 Cerbos predicate를 적용한다.
 
 ```sql
 SELECT d.*
@@ -69,14 +69,16 @@ ORDER BY d.id
 위 SQL은 다음 형태로 실행된다.
 
 ```sql
-SELECT cb.*
+SELECT __cerbos_scope.*
 FROM (
     SELECT d.*
     FROM document d
     ORDER BY d.id
-) cb
-WHERE (cb.owner_by = ?)
+) __cerbos_scope
+WHERE (__cerbos_scope.owner_by = ?)
 ```
+
+기본 alias는 `__cerbos_scope`다. 원본 SQL에 같은 identifier가 있으면 `__cerbos_scope_1`, `__cerbos_scope_2`처럼 suffix를 붙여 충돌을 피한다. Cerbos predicate가 비어 있는 allow-all plan이면 원본 SQL을 감싸지 않는다.
 
 따라서 보호 대상 목록 SQL은 `owner_by`, `owner_org_by`를 projection해야 한다. 기본 injector가 alias를 제공하지 않는 custom 구현으로 교체된 경우에는 top-level `FROM` / `JOIN`의 table alias를 fallback으로 감지한다.
 
@@ -95,7 +97,7 @@ WHERE (cb.owner_by = ?)
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:1.0.12'
+    implementation 'com.github.qsdcv301:CerbosHelper:1.0.13'
 }
 ```
 

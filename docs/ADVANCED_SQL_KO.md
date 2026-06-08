@@ -1,6 +1,6 @@
 # 고급 SQL 적용 가이드
 
-CerbosHelper의 기본 `DefaultCerbosSqlPredicateInjector`는 원본 MyBatis SQL을 `cb` alias를 가진 derived table로 감싼다.
+CerbosHelper의 기본 `DefaultCerbosSqlPredicateInjector`는 원본 MyBatis SQL을 Helper 내부 alias를 가진 derived table로 감싼다.
 
 ```sql
 SELECT document.*
@@ -12,17 +12,19 @@ ORDER BY document.id
 기본 실행 형태는 다음과 같다.
 
 ```sql
-SELECT cb.*
+SELECT __cerbos_scope.*
 FROM (
     SELECT document.*
     FROM documents document
     WHERE document.deleted = false
     ORDER BY document.id
-) cb
-WHERE (cb.owner_by = ?)
+) __cerbos_scope
+WHERE (__cerbos_scope.owner_by = ?)
 ```
 
-`CerbosSqlPredicateInjector.predicateAlias(...)`의 기본값은 `cb`다. 그래서 `CerbosPlanToSqlConverter`는 Cerbos plan을 `cb.owner_by`, `cb.owner_org_by` 같은 outer alias 기준 predicate로 변환한다.
+`CerbosSqlPredicateInjector.predicateAlias(...)`의 기본값은 `__cerbos_scope`다. 원본 SQL에 같은 identifier가 있으면 `__cerbos_scope_1`, `__cerbos_scope_2`처럼 suffix를 붙인다. 그래서 `CerbosPlanToSqlConverter`는 Cerbos plan을 `__cerbos_scope.owner_by`, `__cerbos_scope.owner_org_by` 같은 outer alias 기준 predicate로 변환한다.
+
+Cerbos predicate가 비어 있는 allow-all plan이면 원본 SQL을 감싸지 않는다.
 
 ## 기본 원칙
 
