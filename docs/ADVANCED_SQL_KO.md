@@ -1,6 +1,6 @@
 # 고급 SQL 적용 가이드
 
-CerbosHelper의 기본 `DefaultCerbosSqlPredicateInjector`는 단일 resource row 목록 조회에 최적화되어 있다.
+CerbosHelper의 기본 `DefaultCerbosSqlPredicateInjector`는 원본 MyBatis SQL을 `cb` alias를 가진 derived table로 감싼다.
 
 ```sql
 SELECT document.*
@@ -9,53 +9,28 @@ WHERE document.deleted = false
 ORDER BY document.id
 ```
 
-기본 injector는 top-level `FROM` / `JOIN`의 resource table alias를 자동 감지한다.
+기본 실행 형태는 다음과 같다.
 
 ```sql
-SELECT d.*
-FROM document d
-ORDER BY d.id
+SELECT cb.*
+FROM (
+    SELECT document.*
+    FROM documents document
+    WHERE document.deleted = false
+    ORDER BY document.id
+) cb
+WHERE (cb.owner_by = ?)
 ```
 
-기본 흐름은 alias를 먼저 감지한 뒤 Cerbos predicate 생성 단계에서 바로 `d.owner_by = ?`를 사용한다. `FROM user_memo AS memo` 같은 `AS` alias도 같은 방식으로 처리한다.
-
-복잡한 SQL은 default injector에 하드코딩하지 않고 `CerbosSqlPredicateInjector` 구현으로 분리한다.
+`CerbosSqlPredicateInjector.predicateAlias(...)`의 기본값은 `cb`다. 그래서 `CerbosPlanToSqlConverter`는 Cerbos plan을 `cb.owner_by`, `cb.owner_org_by` 같은 outer alias 기준 predicate로 변환한다.
 
 ## 기본 원칙
 
-- Cerbos predicate가 참조하는 column은 필터 적용 위치에 반드시 존재해야 한다.
+- Cerbos predicate가 참조하는 column은 inner query projection에 있어야 한다.
+- owner-column 정책이면 inner query가 `owner_by`, `owner_org_by`를 projection해야 한다.
 - `request.resource.attr.*`와 SQL column 매핑은 `owner_by`, `owner_org_by` 고정 규칙을 우선 사용한다.
 - aggregate 결과처럼 원본 resource row가 사라진 결과에는 직접 scope를 걸지 않는다.
-- 구현이 애매하면 먼저 visible resource id 목록을 구하고, 그 id로 후속 집계를 수행한다.
-
-## Derived Table Wrapping
-
-원본 SQL을 derived table로 감싸고 outer query에서 predicate를 붙일 수 있다.
-
-```java
-final class WrappingCerbosSqlPredicateInjector implements CerbosSqlPredicateInjector {
-    @Override
-    public CerbosSqlInjectionResult inject(String sql, String predicate) {
-        return new CerbosSqlInjectionResult(
-                "SELECT scoped.* FROM (" + sql + ") scoped WHERE (" + predicate + ")",
-                countOriginalPlaceholders(sql)
-        );
-    }
-}
-```
-
-이 방식은 inner query가 Cerbos predicate에 필요한 column을 projection해야 한다. 예를 들어 outer alias가 `scoped`면 registry는 다음처럼 맞춘다.
-
-```java
-@Bean
-CerbosResourceColumnRegistry cerbosResourceColumnRegistry() {
-    return CerbosResourceColumnRegistry.builder()
-            .column("document", "request.resource.attr.companyId", "scoped.company_id")
-            .column("document", "request.resource.attr.ownerBy", "scoped.owner_by")
-            .column("document", "request.resource.attr.ownerOrgBy", "scoped.owner_org_by")
-            .build();
-}
-```
+- 기본 injector가 alias를 제공하지 않는 custom 구현으로 교체된 경우에는 top-level `FROM` / `JOIN`의 resource alias를 fallback으로 감지한다.
 
 ## WITH CTE
 

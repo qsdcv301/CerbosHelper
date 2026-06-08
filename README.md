@@ -58,7 +58,7 @@ Spring Security가 classpath에 있으면 `SecurityContextHolder`의 현재 `Aut
 - `find{Resource}Ids` 같은 ID 목록 메서드는 메서드명에서 resourceKind를 추론한다.
 - `findAll*`, `selectAll*`, `listAll*`, `debug*`, `trace*`, `admin*`, `findById` 계열은 자동 scope에서 제외한다.
 
-Mapper SQL의 table alias는 자동 감지한다. 표준 테이블명은 resourceKind의 snake_case를 사용한다.
+목록 조회 SQL은 기본적으로 `cb` alias를 가진 derived table로 감싼 뒤 outer query에서 Cerbos predicate를 적용한다.
 
 ```sql
 SELECT d.*
@@ -66,7 +66,19 @@ FROM document d
 ORDER BY d.id
 ```
 
-위 SQL은 alias를 먼저 감지한 뒤 Cerbos predicate 생성 단계에서 바로 `d.owner_by`를 사용한다. `FROM user_memo AS memo`처럼 `AS` alias도 감지한다.
+위 SQL은 다음 형태로 실행된다.
+
+```sql
+SELECT cb.*
+FROM (
+    SELECT d.*
+    FROM document d
+    ORDER BY d.id
+) cb
+WHERE (cb.owner_by = ?)
+```
+
+따라서 보호 대상 목록 SQL은 `owner_by`, `owner_org_by`를 projection해야 한다. 기본 injector가 alias를 제공하지 않는 custom 구현으로 교체된 경우에는 top-level `FROM` / `JOIN`의 table alias를 fallback으로 감지한다.
 
 단건/쓰기 서비스 메서드는 `@Service` 메서드명으로 자동 판단한다.
 
@@ -83,7 +95,7 @@ ORDER BY d.id
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:1.0.11'
+    implementation 'com.github.qsdcv301:CerbosHelper:1.0.12'
 }
 ```
 

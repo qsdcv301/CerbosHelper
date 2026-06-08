@@ -21,7 +21,7 @@
 
 | 항목 | 이유 | 방향 |
 | --- | --- | --- |
-| 고급 SQL injector 구현 | `WITH`, `UNION`, aggregate는 실제 수요가 높다. | `Wrapping`, `CteTarget`, `UnionBranch` injector를 별도 구현과 테스트로 제공 |
+| 고급 SQL injector 구현 | `WITH`, `UNION`, aggregate는 실제 수요가 높다. | `CteTarget`, `UnionBranch` injector를 별도 구현과 테스트로 제공 |
 | resolver 전용 테스트 | `DefaultCerbosResourceResolver`가 기본 CRUD 사용감의 핵심이다. | mapper/finder/id/withId/custom resolver 케이스 테스트 |
 | interceptor order 전략 테스트 | PageHelper 호환의 핵심이다. | default strategy와 no-op strategy를 분리 검증 |
 

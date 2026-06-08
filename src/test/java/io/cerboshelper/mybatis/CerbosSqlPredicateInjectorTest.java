@@ -10,25 +10,40 @@ class CerbosSqlPredicateInjectorTest {
     private final DefaultCerbosSqlPredicateInjector injector = new DefaultCerbosSqlPredicateInjector();
 
     @Test
-    void appendsPredicateBeforeTopLevelOrderBy() {
+    void wrapsOriginalSqlWithCerbosAlias() {
         CerbosSqlInjectionResult result = injector.inject(
                 "SELECT * FROM documents document WHERE document.deleted = ? ORDER BY document.id",
-                "document.company_id = ?"
+                "cb.owner_by = ?"
         );
 
-        assertEquals("SELECT * FROM documents document WHERE document.deleted = ? AND (document.company_id = ?) ORDER BY document.id", result.sql());
+        assertEquals("SELECT cb.* FROM (SELECT * FROM documents document WHERE document.deleted = ? ORDER BY document.id) cb WHERE (cb.owner_by = ?)", result.sql());
         assertEquals(1, result.parameterInsertionIndex());
     }
 
     @Test
-    void addsWhereWhenQueryHasNoTopLevelWhere() {
+    void wrapsSqlWithoutOriginalWhere() {
         CerbosSqlInjectionResult result = injector.inject(
                 "SELECT * FROM documents document ORDER BY document.id",
-                "document.company_id = ?"
+                "cb.owner_by = ?"
         );
 
-        assertEquals("SELECT * FROM documents document WHERE (document.company_id = ?) ORDER BY document.id", result.sql());
+        assertEquals("SELECT cb.* FROM (SELECT * FROM documents document ORDER BY document.id) cb WHERE (cb.owner_by = ?)", result.sql());
         assertEquals(0, result.parameterInsertionIndex());
+    }
+
+    @Test
+    void usesCbAsPredicateAlias() {
+        assertEquals("cb", injector.predicateAlias("SELECT * FROM documents", "document").orElseThrow());
+    }
+
+    @Test
+    void insertsCerbosParametersAfterOriginalSqlPlaceholders() {
+        CerbosSqlInjectionResult result = injector.inject(
+                "SELECT * FROM documents document WHERE document.title = '?' AND document.status = ?",
+                "cb.owner_by = ?"
+        );
+
+        assertEquals(1, result.parameterInsertionIndex());
     }
 
 }

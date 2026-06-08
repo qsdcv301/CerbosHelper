@@ -102,7 +102,9 @@ public class CerbosMyBatisScopeInterceptor implements Interceptor {
 
     private BoundSql applyCerbosScope(MappedStatement statement, BoundSql boundSql, String resourceKind, String action, Object principal) {
         JsonNode plan = authorizationClient.planResources(principal, resourceKind, action);
-        String sqlAlias = SQL_ALIAS_RESOLVER.resolve(boundSql.getSql(), resourceKind).orElse("");
+        String sqlAlias = sqlPredicateInjector.predicateAlias(boundSql.getSql(), resourceKind)
+                .or(() -> SQL_ALIAS_RESOLVER.resolve(boundSql.getSql(), resourceKind))
+                .orElse("");
         CerbosSqlFilter filter = planToSqlConverter.convertPositional(resourceKind, plan, sqlAlias);
         CerbosSqlInjectionResult injectionResult = sqlPredicateInjector.inject(boundSql.getSql(), filter.denied() ? "1 = 0" : filter.whereSql());
 
