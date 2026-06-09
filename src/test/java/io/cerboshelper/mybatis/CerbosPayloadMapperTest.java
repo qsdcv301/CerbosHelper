@@ -5,6 +5,7 @@ import io.cerboshelper.mybatis.auth.CerbosPayloadMapper;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalEnvelope;
 import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
+import io.cerboshelper.mybatis.model.CerbosId;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -86,11 +87,35 @@ class CerbosPayloadMapperTest {
         assertEquals(100L, attr.get("ownerOrgBy"));
     }
 
+    @Test
+    void resourcePayloadUsesCerbosIdAnnotationForNonStandardPrimaryKey() {
+        CerbosPayloadMapper mapper = new CerbosPayloadMapper(
+                new CerbosHelperProperties(),
+                new CerbosCommonResourceRegistry(List.of(UserMemo.class))
+        );
+
+        Map<String, Object> payload = mapper.resourcePayload(new UserMemo(15, "user-1", 100L));
+
+        assertEquals("15", payload.get("id"));
+        assertEquals("userMemo", payload.get("kind"));
+    }
+
     private static class Memo extends CerbosCommonDto {
         private final long id;
 
         private Memo(long id, String ownerBy, Long ownerOrgBy) {
             this.id = id;
+            setOwnerBy(ownerBy);
+            setOwnerOrgBy(ownerOrgBy);
+        }
+    }
+
+    private static class UserMemo extends CerbosCommonDto {
+        @CerbosId
+        private final Integer userMemoId;
+
+        private UserMemo(Integer userMemoId, String ownerBy, Long ownerOrgBy) {
+            this.userMemoId = userMemoId;
             setOwnerBy(ownerBy);
             setOwnerOrgBy(ownerOrgBy);
         }

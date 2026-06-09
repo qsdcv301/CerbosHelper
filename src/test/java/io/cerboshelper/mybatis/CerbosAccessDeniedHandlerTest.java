@@ -14,6 +14,7 @@ class CerbosAccessDeniedHandlerTest {
                 .denied(new CerbosDeniedDecision("update", "principal", "resource", "principal-1", "document-1"));
 
         assertInstanceOf(SecurityException.class, exception);
+        assertTrue(exception.getMessage().contains("reason=DENIED"));
         assertTrue(exception.getMessage().contains("action=update"));
         assertTrue(exception.getMessage().contains("principal=principal-1"));
         assertTrue(exception.getMessage().contains("resource=document-1"));

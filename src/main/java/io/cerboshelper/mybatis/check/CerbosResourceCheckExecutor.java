@@ -9,17 +9,18 @@ import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.springframework.beans.factory.BeanFactory;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-public class CerbosCheckAspect {
+public class CerbosResourceCheckExecutor {
     private final CerbosAuthorizationClient authorizationClient;
     private final CerbosPrincipalResolver principalResolver;
     private final CerbosAccessDeniedHandler accessDeniedHandler;
     private final CerbosResourceResolver resourceResolver;
     private final CerbosMethodExpressionEvaluator expressionEvaluator;
 
-    public CerbosCheckAspect(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory, CerbosPrincipalResolver principalResolver, CerbosAccessDeniedHandler accessDeniedHandler, CerbosResourceResolver resourceResolver) {
+    public CerbosResourceCheckExecutor(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory, CerbosPrincipalResolver principalResolver, CerbosAccessDeniedHandler accessDeniedHandler, CerbosResourceResolver resourceResolver) {
         this.authorizationClient = authorizationClient;
         this.principalResolver = principalResolver;
         this.accessDeniedHandler = accessDeniedHandler;
@@ -28,12 +29,38 @@ public class CerbosCheckAspect {
     }
 
     public void authorize(Method method, Object[] args, CerbosMethodExpressionEvaluator.Context context, CerbosCheckSpec check) {
+        authorizeResources(method, context, check, requireResources(method, resourceResolver.resolve(new CerbosResourceResolutionRequest(check, method, args, context))));
+    }
+
+    public void authorizeReturnedResource(Method method, CerbosMethodExpressionEvaluator.Context context, CerbosCheckSpec check, Object result) {
+        List<Object> resources = returnedResources(result);
+        if (resources.isEmpty()) {
+            return;
+        }
+        authorizeResources(method, context, check, resources);
+    }
+
+    public CerbosMethodExpressionEvaluator.Context context(Method method, Object[] args) {
+        return expressionEvaluator.context(method, args);
+    }
+
+    private void authorizeResources(Method method, CerbosMethodExpressionEvaluator.Context context, CerbosCheckSpec check, List<Object> resources) {
         Object principal = expressionEvaluator.principal(check.principal(), context, principalResolver);
-        List<Object> resources = requireResources(method, resourceResolver.resolve(new CerbosResourceResolutionRequest(check, method, args, context)));
-        applyCreateOwnerDefaults(check.action(), principal, resources);
+        if (principal == null) {
+            throw accessDeniedHandler.denied(new CerbosDeniedDecision(
+                    CerbosFailureReason.MISSING_PRINCIPAL,
+                    check.action(),
+                    null,
+                    null,
+                    "null",
+                    "not-resolved"
+            ));
+        }
         for (Object resource : resources) {
+            validateOwner(check, principal, resource);
             if (!authorizationClient.isAllowed(principal, resource, check.action())) {
                 throw accessDeniedHandler.denied(new CerbosDeniedDecision(
+                        CerbosFailureReason.DENIED,
                         check.action(),
                         principal,
                         resource,
@@ -44,41 +71,42 @@ public class CerbosCheckAspect {
         }
     }
 
-    public CerbosMethodExpressionEvaluator.Context context(Method method, Object[] args) {
-        return expressionEvaluator.context(method, args);
-    }
-
-    private void applyCreateOwnerDefaults(String action, Object principal, List<Object> resources) {
-        if (!"create".equals(action)) {
+    private void validateOwner(CerbosCheckSpec check, Object principal, Object resource) {
+        if (!(resource instanceof CerbosCommonDto commonResource)) {
             return;
         }
-        String principalId = principalId(principal).orElse(null);
-        for (Object resource : resources) {
-            if (!(resource instanceof CerbosCommonDto commonResource)) {
-                continue;
-            }
-            if (commonResource.getOwnerBy() == null || commonResource.getOwnerBy().isBlank()) {
-                commonResource.setOwnerBy(principalId);
-            }
-            if (commonResource.getOwnerOrgBy() == null) {
-                readLongProperty(resource, "getOrgId")
-                        .or(() -> readLongProperty(resource, "getOrganizationId"))
-                        .ifPresent(commonResource::setOwnerOrgBy);
-            }
+        boolean missingOwnerBy = commonResource.getOwnerBy() == null || commonResource.getOwnerBy().isBlank();
+        boolean missingOwnerOrgBy = commonResource.getOwnerOrgBy() == null;
+        if (!missingOwnerBy || !missingOwnerOrgBy) {
+            return;
         }
+        throw accessDeniedHandler.denied(new CerbosDeniedDecision(
+                CerbosFailureReason.MISSING_OWNER,
+                check.action(),
+                principal,
+                resource,
+                describe(principal),
+                describe(resource)
+        ));
     }
 
-    private Optional<String> principalId(Object principal) {
-        if (principal instanceof CerbosPrincipalEnvelope envelope) {
-            return Optional.ofNullable(envelope.id());
+    private List<Object> returnedResources(Object result) {
+        List<Object> resources = new ArrayList<>();
+        if (result == null) {
+            return resources;
         }
-        for (String methodName : List.of("getName", "getUserId", "userId", "getId", "id")) {
-            Optional<Object> value = invokeNoArg(principal, methodName);
-            if (value.isPresent()) {
-                return Optional.of(String.valueOf(value.get()));
-            }
+        if (result instanceof Optional<?> optional) {
+            optional.ifPresent(value -> addResource(resources, value));
+            return resources;
         }
-        return Optional.ofNullable(principal).map(String::valueOf);
+        addResource(resources, result);
+        return resources;
+    }
+
+    private void addResource(List<Object> resources, Object resource) {
+        if (resource instanceof CerbosCommonDto) {
+            resources.add(resource);
+        }
     }
 
     private List<Object> requireResources(Method method, List<Object> resources) {
@@ -114,16 +142,6 @@ public class CerbosCheckAspect {
         return Optional.empty();
     }
 
-    private Optional<Long> readLongProperty(Object value, String methodName) {
-        return invokeNoArg(value, methodName)
-                .map(property -> {
-                    if (property instanceof Number number) {
-                        return number.longValue();
-                    }
-                    return Long.valueOf(String.valueOf(property));
-                });
-    }
-
     private Optional<Object> invokeNoArg(Object value, String methodName) {
         if (value == null) {
             return Optional.empty();
@@ -142,5 +160,4 @@ public class CerbosCheckAspect {
         }
         return value.substring(0, 1).toLowerCase(java.util.Locale.ROOT) + value.substring(1);
     }
-
 }

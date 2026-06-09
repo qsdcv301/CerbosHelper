@@ -60,16 +60,15 @@ public class CerbosPayloadMapper {
     }
 
     private Object resourceId(Object resource, Map<String, Object> attributes) {
+        java.util.Optional<Object> annotatedId = registry.resourceId(resource);
+        if (annotatedId.isPresent()) {
+            return annotatedId.get();
+        }
         OptionalValue id = value(attributes, "id");
         if (id.present() && id.value() != null) {
             return id.value();
         }
-        java.util.Optional<String> resultMapIdProperty = registry.idPropertyForType(resource.getClass());
-        if (resultMapIdProperty.isPresent()) {
-            OptionalValue resultMapId = value(attributes, resultMapIdProperty.get());
-            return resultMapId.present() && resultMapId.value() != null ? resultMapId.value() : "new";
-        }
-        throw new IllegalArgumentException("Missing Cerbos id attribute. Expected an id/getId property or a single MyBatis resultMap <id> property.");
+        throw new IllegalArgumentException("Missing Cerbos id attribute. Add @CerbosId to the protected DTO id field/method or expose id/getId.");
     }
 
     private Map<String, Object> attributes(Object value) {

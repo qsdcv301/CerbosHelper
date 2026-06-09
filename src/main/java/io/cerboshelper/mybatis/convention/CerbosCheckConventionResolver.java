@@ -21,6 +21,9 @@ public final class CerbosCheckConventionResolver {
         if (action == null || isExcluded(method.getName())) {
             return Optional.empty();
         }
+        if ("view".equals(action)) {
+            return Optional.of(new CerbosCheckSpec(action, "", "", "", "", "", ""));
+        }
         Optional<ResourceArgument> resourceArgument = resourceArgument(method, context);
         if (resourceArgument.isPresent()) {
             String idVariable = idVariableFor(resourceArgument.get().resourceKind(), context)
@@ -68,7 +71,7 @@ public final class CerbosCheckConventionResolver {
     }
 
     private Optional<String> resourceKindFromMethodName(String methodName) {
-        String normalized = methodName.replaceFirst("^(findVisible|find|select|get|create|insert|save|update|modify|delete|remove)", "");
+        String normalized = methodName.replaceFirst("^(findVisible|find|select|get|update|modify|delete|remove)", "");
         return registry.resourceKindFromToken(normalized);
     }
 
@@ -91,11 +94,11 @@ public final class CerbosCheckConventionResolver {
         if (!usesExistingResource(action)) {
             return "";
         }
-        return "#" + variableName + "." + registry.idPropertyForKind(resourceKind).orElse("id");
+        return "#" + variableName;
     }
 
     private boolean usesExistingResource(String action) {
-        return "view".equals(action) || "update".equals(action) || "delete".equals(action);
+        return "update".equals(action) || "delete".equals(action);
     }
 
     private boolean isNamedParameter(String variableName, Method method) {
@@ -106,9 +109,6 @@ public final class CerbosCheckConventionResolver {
     private Optional<String> actionFor(String methodName) {
         if (startsWithAny(methodName, "find", "get", "select")) {
             return Optional.of("view");
-        }
-        if (startsWithAny(methodName, "create", "insert", "save")) {
-            return Optional.of("create");
         }
         if (startsWithAny(methodName, "update", "modify")) {
             return Optional.of("update");

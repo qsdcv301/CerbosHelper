@@ -10,6 +10,8 @@ import org.aspectj.lang.reflect.MethodSignature;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 @Aspect
@@ -22,16 +24,17 @@ public class CerbosAutoCheckAspect {
             + " && !@annotation(org.springframework.context.annotation.Bean)";
 
     private final CerbosCheckConventionResolver conventionResolver;
-    private final CerbosCheckAspect checkAspect;
+    private final CerbosResourceCheckExecutor checkExecutor;
     private final CerbosHelperProperties properties;
+    private final Map<String, Pattern> patternCache = new ConcurrentHashMap<>();
 
-    public CerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosCheckAspect checkAspect) {
-        this(conventionResolver, checkAspect, new CerbosHelperProperties());
+    public CerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosResourceCheckExecutor checkExecutor) {
+        this(conventionResolver, checkExecutor, new CerbosHelperProperties());
     }
 
-    public CerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosCheckAspect checkAspect, CerbosHelperProperties properties) {
+    public CerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosResourceCheckExecutor checkExecutor, CerbosHelperProperties properties) {
         this.conventionResolver = conventionResolver;
-        this.checkAspect = checkAspect;
+        this.checkExecutor = checkExecutor;
         this.properties = properties == null ? new CerbosHelperProperties() : properties;
     }
 
@@ -42,11 +45,17 @@ public class CerbosAutoCheckAspect {
         if (!shouldAutoCheck(targetType, method)) {
             return proceed(joinPoint);
         }
-        CerbosMethodExpressionEvaluator.Context context = checkAspect.context(method, joinPoint.getArgs());
+        CerbosMethodExpressionEvaluator.Context context = checkExecutor.context(method, joinPoint.getArgs());
         CerbosCheckSpec check = conventionResolver.resolve(method, context).orElse(null);
-        if (check != null) {
-            checkAspect.authorize(method, joinPoint.getArgs(), context, check);
+        if (check == null) {
+            return proceed(joinPoint);
         }
+        if ("view".equals(check.action())) {
+            Object result = proceed(joinPoint);
+            checkExecutor.authorizeReturnedResource(method, context, check, result);
+            return result;
+        }
+        checkExecutor.authorize(method, joinPoint.getArgs(), context, check);
         return proceed(joinPoint);
     }
 
@@ -91,7 +100,7 @@ public class CerbosAutoCheckAspect {
             if (pattern == null || pattern.isBlank()) {
                 continue;
             }
-            Pattern compiled = Pattern.compile(pattern);
+            Pattern compiled = patternCache.computeIfAbsent(pattern, Pattern::compile);
             for (String value : values) {
                 if (value != null && compiled.matcher(value).find()) {
                     return true;

@@ -14,8 +14,12 @@
 | SQL predicate 삽입 | `CerbosSqlPredicateInjector`로 분리 |
 | MyBatis interceptor order | `CerbosMyBatisInterceptorOrderStrategy`로 분리 |
 | deny 예외 변환 | `CerbosAccessDeniedHandler`로 분리 |
-| auto-check 대상 제한 | `cerboshelper.check.auto.*` 설정으로 분리 |
-| write check resource 보강 | create owner 기본값, update/delete 기존 row 조회 지원 |
+| auto-check 대상 제한 | `CerbosHelperConfig.autoCheck(...)`와 property binding으로 분리 |
+| 프로젝트 설정 진입점 | `CerbosHelperConfig`, `CerbosHelperConfigurer`로 분리 |
+| DTO id 명시 | `@CerbosId`와 기본 `id` / `getId()` / `id()` 지원 |
+| read check 최적화 | 단건 read는 service 반환 DTO 기준으로 검사 |
+| write check resource 보강 | update/delete 기존 row 조회 지원 |
+| create check 제외 | `create*`, `insert*`, `save*` auto-check 제외 |
 
 ## 우선순위 높음
 
@@ -33,7 +37,7 @@
 | parameter name strategy | `cp0`는 합리적 기본값이지만 프로젝트별 prefix 요구가 있을 수 있다. | `CerbosSqlParameterNameStrategy` 추가 |
 | SQL dialect 명시 | 문자열 기반 injector는 dialect별 차이에 취약하다. | dialect별 injector 또는 parser 기반 구현 제공 |
 | observability hook | 운영 장애 분석에는 plan/predicate/decision 관찰이 필요하다. | 마스킹 가능한 listener interface 추가 |
-| batch check 최적화 | 여러 resource check를 개별 호출하면 비용이 커질 수 있다. | `CerbosCheckAspect`에서 batch check 옵션 제공 |
+| batch check 최적화 | 여러 resource check를 개별 호출하면 비용이 커질 수 있다. | `CerbosResourceCheckExecutor`에서 batch check 옵션 제공 |
 
 ## 우선순위 낮음
 

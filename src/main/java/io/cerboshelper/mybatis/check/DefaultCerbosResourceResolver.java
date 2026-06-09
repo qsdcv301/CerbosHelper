@@ -55,7 +55,7 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
     }
 
     private boolean usesExistingResource(String action) {
-        return "view".equals(action) || "update".equals(action) || "delete".equals(action);
+        return "update".equals(action) || "delete".equals(action);
     }
 
     private void addResource(List<Object> resources, Object resource) {
@@ -149,39 +149,11 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
     }
 
     private Object idValue(String value, CerbosMethodExpressionEvaluator.Context context) {
-        IdResolution registeredId = registeredResourceId(value, context);
-        if (registeredId.resolved()) {
-            return registeredId.value();
-        }
         Object id = tokenOrExpression(value, context);
         if (id instanceof CerbosCommonDto commonResource) {
             return registry.resourceId(commonResource).orElse(null);
         }
         return id;
-    }
-
-    private IdResolution registeredResourceId(String value, CerbosMethodExpressionEvaluator.Context context) {
-        if (value == null || !value.startsWith("#") || value.startsWith("@")) {
-            return IdResolution.unresolved();
-        }
-        String expression = value.substring(1);
-        int separator = expression.indexOf('.');
-        String variableName = separator >= 0 ? expression.substring(0, separator) : expression;
-        String propertyName = separator >= 0 ? expression.substring(separator + 1) : "";
-        if (variableName.isBlank() || variableName.contains("[") || variableName.contains("]") || propertyName.contains(".")) {
-            return IdResolution.unresolved();
-        }
-        Object resource = context.variable(variableName);
-        if (!(resource instanceof CerbosCommonDto)) {
-            return IdResolution.unresolved();
-        }
-        if (!propertyName.isBlank()) {
-            Optional<String> registeredProperty = registry.idPropertyForType(resource.getClass());
-            if (registeredProperty.isEmpty() || !registeredProperty.get().equals(propertyName)) {
-                return IdResolution.unresolved();
-            }
-        }
-        return IdResolution.resolved(registry.resourceId(resource).orElse(null));
     }
 
     private Object applyIdIfPossible(Object resource, CerbosCheckSpec check, CerbosMethodExpressionEvaluator.Context context) {
@@ -250,15 +222,5 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
     }
 
     private record IdReference(String resourceKind, String mapperBeanName, String finderName, Object id) {
-    }
-
-    private record IdResolution(boolean resolved, Object value) {
-        private static IdResolution unresolved() {
-            return new IdResolution(false, null);
-        }
-
-        private static IdResolution resolved(Object value) {
-            return new IdResolution(true, value);
-        }
     }
 }

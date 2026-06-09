@@ -10,12 +10,13 @@ import io.cerboshelper.mybatis.sql.CerbosPlanToSqlConverter;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalResolver;
 import io.cerboshelper.mybatis.auth.CerbosSdkAuthorizationClient;
 import io.cerboshelper.mybatis.auth.SpringSecurityCerbosPrincipalResolver;
-import io.cerboshelper.mybatis.check.CerbosCheckAspect;
+import io.cerboshelper.mybatis.check.CerbosResourceCheckExecutor;
 import io.cerboshelper.mybatis.check.CerbosResourceResolver;
 import io.cerboshelper.mybatis.check.DefaultCerbosResourceResolver;
+import io.cerboshelper.mybatis.config.CerbosHelperConfig;
+import io.cerboshelper.mybatis.config.CerbosHelperConfigurer;
 import io.cerboshelper.mybatis.convention.CerbosCheckConventionResolver;
 import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
-import io.cerboshelper.mybatis.convention.CerbosResultMapIdPropertyRegistrar;
 import io.cerboshelper.mybatis.convention.CerbosScopeConventionResolver;
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
 import io.cerboshelper.mybatis.scope.CerbosMyBatisInterceptorOrderStrategy;
@@ -26,6 +27,7 @@ import io.cerboshelper.mybatis.sql.CerbosResourceColumnRegistry;
 import io.cerboshelper.mybatis.sql.CerbosResourceColumns;
 import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -48,6 +50,15 @@ import java.util.Optional;
 @AutoConfiguration
 @EnableConfigurationProperties(CerbosHelperProperties.class)
 public class CerbosHelperAutoConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    CerbosHelperConfigurer cerbosHelperConfigurer(ObjectProvider<CerbosHelperConfig> configs, CerbosHelperProperties properties) {
+        CerbosHelperConfigurer configurer = new CerbosHelperConfigurer();
+        configs.orderedStream().forEach(config -> config.configure(configurer));
+        configurer.apply(properties);
+        return configurer;
+    }
+
     @Bean
     @ConditionalOnMissingBean
     CerbosCommonResourceRegistry cerbosCommonResourceRegistry(BeanFactory beanFactory) {
@@ -75,47 +86,55 @@ public class CerbosHelperAutoConfiguration {
     @Bean
     @ConditionalOnClass(CerbosBlockingClient.class)
     @ConditionalOnMissingBean(CerbosAuthorizationClient.class)
-    CerbosAuthorizationClient cerbosAuthorizationClient(CerbosHelperProperties properties, CerbosPayloadMapper payloadMapper) {
-        return new CerbosSdkAuthorizationClient(properties, payloadMapper);
+    CerbosAuthorizationClient cerbosAuthorizationClient(CerbosHelperProperties properties, CerbosPayloadMapper payloadMapper, CerbosHelperConfigurer configurer) {
+        return configurer.authorizationClient()
+                .orElseGet(() -> new CerbosSdkAuthorizationClient(properties, payloadMapper));
     }
 
     @Bean
     @ConditionalOnMissingBean
-    CerbosPrincipalResolver cerbosPrincipalResolver() {
-        return new SpringSecurityCerbosPrincipalResolver();
+    CerbosPrincipalResolver cerbosPrincipalResolver(CerbosHelperConfigurer configurer) {
+        return configurer.principalResolver()
+                .orElseGet(SpringSecurityCerbosPrincipalResolver::new);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    CerbosAccessDeniedHandler cerbosAccessDeniedHandler() {
-        return CerbosAccessDeniedHandler.securityException();
+    CerbosAccessDeniedHandler cerbosAccessDeniedHandler(CerbosHelperConfigurer configurer) {
+        return configurer.accessDeniedHandler()
+                .orElseGet(CerbosAccessDeniedHandler::securityException);
     }
 
     @Bean
     @ConditionalOnClass(Aspect.class)
     @ConditionalOnBean(CerbosAuthorizationClient.class)
     @ConditionalOnMissingBean
-    CerbosCheckAspect cerbosCheckAspect(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory, CerbosPrincipalResolver principalResolver, CerbosAccessDeniedHandler accessDeniedHandler, CerbosResourceResolver resourceResolver) {
-        return new CerbosCheckAspect(authorizationClient, beanFactory, principalResolver, accessDeniedHandler, resourceResolver);
+    CerbosResourceCheckExecutor cerbosResourceCheckExecutor(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory, CerbosPrincipalResolver principalResolver, CerbosAccessDeniedHandler accessDeniedHandler, CerbosResourceResolver resourceResolver) {
+        return new CerbosResourceCheckExecutor(authorizationClient, beanFactory, principalResolver, accessDeniedHandler, resourceResolver);
     }
 
     @Bean
     @ConditionalOnClass(Aspect.class)
-    @ConditionalOnBean(CerbosCheckAspect.class)
+    @ConditionalOnBean(CerbosResourceCheckExecutor.class)
     @ConditionalOnMissingBean
-    CerbosAutoCheckAspect cerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosCheckAspect checkAspect, CerbosHelperProperties properties) {
-        return new CerbosAutoCheckAspect(conventionResolver, checkAspect, properties);
+    CerbosAutoCheckAspect cerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosResourceCheckExecutor checkExecutor, CerbosHelperProperties properties) {
+        return new CerbosAutoCheckAspect(conventionResolver, checkExecutor, properties);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    CerbosResourceResolver cerbosResourceResolver(BeanFactory beanFactory, CerbosCommonResourceRegistry registry) {
-        return new DefaultCerbosResourceResolver(beanFactory, new CerbosMethodExpressionEvaluator(beanFactory), registry);
+    CerbosResourceResolver cerbosResourceResolver(BeanFactory beanFactory, CerbosCommonResourceRegistry registry, CerbosHelperConfigurer configurer) {
+        return configurer.resourceResolver()
+                .orElseGet(() -> new DefaultCerbosResourceResolver(beanFactory, new CerbosMethodExpressionEvaluator(beanFactory), registry));
     }
 
     @Bean
     @ConditionalOnMissingBean
-    CerbosResourceColumnRegistry cerbosResourceColumnRegistry(CerbosCommonResourceRegistry registry) {
+    CerbosResourceColumnRegistry cerbosResourceColumnRegistry(CerbosCommonResourceRegistry registry, CerbosHelperConfigurer configurer) {
+        Optional<CerbosResourceColumnRegistry> configuredRegistry = configurer.resourceColumnRegistry();
+        if (configuredRegistry.isPresent()) {
+            return configuredRegistry.get();
+        }
         CerbosResourceColumns.Builder builder = CerbosResourceColumnRegistry.builder();
         registry.resources().forEach(builder::resource);
         return builder.build();
@@ -130,8 +149,9 @@ public class CerbosHelperAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    CerbosSqlPredicateInjector cerbosSqlPredicateInjector() {
-        return new DefaultCerbosSqlPredicateInjector();
+    CerbosSqlPredicateInjector cerbosSqlPredicateInjector(CerbosHelperConfigurer configurer) {
+        return configurer.sqlPredicateInjector()
+                .orElseGet(DefaultCerbosSqlPredicateInjector::new);
     }
 
     @Bean
@@ -149,14 +169,9 @@ public class CerbosHelperAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    CerbosMyBatisInterceptorOrderStrategy cerbosMyBatisInterceptorOrderStrategy() {
-        return new DefaultCerbosMyBatisInterceptorOrderStrategy();
-    }
-
-    @Bean
-    @ConditionalOnBean(SqlSessionFactory.class)
-    SmartInitializingSingleton cerbosHelperResultMapIdPropertyRegistrar(List<SqlSessionFactory> sqlSessionFactories, CerbosCommonResourceRegistry registry) {
-        return () -> new CerbosResultMapIdPropertyRegistrar(registry).register(sqlSessionFactories);
+    CerbosMyBatisInterceptorOrderStrategy cerbosMyBatisInterceptorOrderStrategy(CerbosHelperConfigurer configurer) {
+        return configurer.interceptorOrderStrategy()
+                .orElseGet(DefaultCerbosMyBatisInterceptorOrderStrategy::new);
     }
 
     private List<Class<?>> scanCommonResourceTypes(BeanFactory beanFactory) {

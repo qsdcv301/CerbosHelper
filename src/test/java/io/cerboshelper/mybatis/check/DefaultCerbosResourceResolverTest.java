@@ -1,6 +1,7 @@
 package io.cerboshelper.mybatis.check;
 
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
+import io.cerboshelper.mybatis.model.CerbosId;
 import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
 import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.junit.jupiter.api.Test;
@@ -52,34 +53,16 @@ class DefaultCerbosResourceResolverTest {
     }
 
     @Test
-    void createUsesRequestResource() throws Exception {
-        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
-        CerbosMethodExpressionEvaluator expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
-        DefaultCerbosResourceResolver resolver = new DefaultCerbosResourceResolver(beanFactory, expressionEvaluator);
-        Method method = DocumentService.class.getDeclaredMethod("createDocument", DocumentDto.class);
-        DocumentDto create = new DocumentDto(0);
-        CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, new Object[]{create});
-        CerbosCheckSpec check = new CerbosCheckSpec("create", "", "document", "", "", "", "findById");
-
-        List<Object> resources = resolver.resolve(new CerbosResourceResolutionRequest(check, method, new Object[]{create}, context));
-
-        assertEquals(1, resources.size());
-        assertInstanceOf(DocumentDto.class, resources.get(0));
-        assertEquals(0, ((DocumentDto) resources.get(0)).id());
-    }
-
-    @Test
-    void registeredResultMapIdPropertyCanResolvePrivateDtoFieldWithoutGetIdOverride() throws Exception {
+    void cerbosIdAnnotationCanResolvePrivateDtoFieldWithoutGetIdOverride() throws Exception {
         DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
         beanFactory.registerSingleton("privateMemoMapper", new PrivateMemoMapper());
         CerbosCommonResourceRegistry registry = new CerbosCommonResourceRegistry(List.of(PrivateMemoDto.class));
-        registry.registerIdProperty(PrivateMemoDto.class, "privateMemoId");
         CerbosMethodExpressionEvaluator expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
         DefaultCerbosResourceResolver resolver = new DefaultCerbosResourceResolver(beanFactory, expressionEvaluator, registry);
         Method method = DocumentService.class.getDeclaredMethod("updatePrivateMemo", PrivateMemoDto.class);
         PrivateMemoDto update = new PrivateMemoDto(30);
         CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, new Object[]{update});
-        CerbosCheckSpec check = new CerbosCheckSpec("update", "", "privateMemo", "", "#privateMemo.privateMemoId", "", "findById");
+        CerbosCheckSpec check = new CerbosCheckSpec("update", "", "privateMemo", "", "#privateMemo", "", "findById");
 
         List<Object> resources = resolver.resolve(new CerbosResourceResolutionRequest(check, method, new Object[]{update}, context));
 
@@ -89,16 +72,15 @@ class DefaultCerbosResourceResolverTest {
     }
 
     @Test
-    void registeredResultMapIdPropertyFailsClosedWhenExistingResourceIdIsNull() throws Exception {
+    void cerbosIdAnnotationFailsClosedWhenExistingResourceIdIsNull() throws Exception {
         DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
         CerbosCommonResourceRegistry registry = new CerbosCommonResourceRegistry(List.of(PrivateMemoDto.class));
-        registry.registerIdProperty(PrivateMemoDto.class, "privateMemoId");
         CerbosMethodExpressionEvaluator expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
         DefaultCerbosResourceResolver resolver = new DefaultCerbosResourceResolver(beanFactory, expressionEvaluator, registry);
         Method method = DocumentService.class.getDeclaredMethod("updatePrivateMemo", PrivateMemoDto.class);
         PrivateMemoDto update = new PrivateMemoDto(null);
         CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, new Object[]{update});
-        CerbosCheckSpec check = new CerbosCheckSpec("update", "", "privateMemo", "", "#privateMemo.privateMemoId", "", "findById");
+        CerbosCheckSpec check = new CerbosCheckSpec("update", "", "privateMemo", "", "#privateMemo", "", "findById");
 
         assertThrows(
                 IllegalArgumentException.class,
@@ -113,10 +95,6 @@ class DefaultCerbosResourceResolverTest {
 
         @SuppressWarnings("unused")
         void updateDocument(DocumentDto document) {
-        }
-
-        @SuppressWarnings("unused")
-        void createDocument(DocumentDto document) {
         }
 
         @SuppressWarnings("unused")
@@ -151,6 +129,7 @@ class DefaultCerbosResourceResolverTest {
     }
 
     static class PrivateMemoDto extends CerbosCommonDto {
+        @CerbosId
         private final Integer privateMemoId;
 
         PrivateMemoDto(Integer privateMemoId) {
