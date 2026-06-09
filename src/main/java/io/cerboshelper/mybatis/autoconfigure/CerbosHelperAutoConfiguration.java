@@ -52,10 +52,9 @@ import java.util.Optional;
 public class CerbosHelperAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    CerbosHelperConfigurer cerbosHelperConfigurer(ObjectProvider<CerbosHelperConfig> configs, CerbosHelperProperties properties) {
+    CerbosHelperConfigurer cerbosHelperConfigurer(ObjectProvider<CerbosHelperConfig> configs) {
         CerbosHelperConfigurer configurer = new CerbosHelperConfigurer();
         configs.orderedStream().forEach(config -> config.configure(configurer));
-        configurer.apply(properties);
         return configurer;
     }
 
@@ -117,8 +116,8 @@ public class CerbosHelperAutoConfiguration {
     @ConditionalOnClass(Aspect.class)
     @ConditionalOnBean(CerbosResourceCheckExecutor.class)
     @ConditionalOnMissingBean
-    CerbosAutoCheckAspect cerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosResourceCheckExecutor checkExecutor, CerbosHelperProperties properties) {
-        return new CerbosAutoCheckAspect(conventionResolver, checkExecutor, properties);
+    CerbosAutoCheckAspect cerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosResourceCheckExecutor checkExecutor, CerbosHelperConfigurer configurer) {
+        return new CerbosAutoCheckAspect(conventionResolver, checkExecutor, configurer.autoCheck());
     }
 
     @Bean

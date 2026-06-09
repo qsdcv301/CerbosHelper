@@ -31,11 +31,11 @@ class DefaultCerbosResourceResolverTest {
 
         assertEquals(1, resources.size());
         assertInstanceOf(DocumentDto.class, resources.get(0));
-        assertEquals(7, ((DocumentDto) resources.get(0)).id());
+        assertEquals(7, ((DocumentDto) resources.get(0)).documentId);
     }
 
     @Test
-    void dtoIdExpressionResolvesExistingResourceForUpdate() throws Exception {
+    void dtoResourceExpressionUsesCerbosIdForExistingResourceUpdate() throws Exception {
         DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
         beanFactory.registerSingleton("documentMapper", new DocumentMapper());
         CerbosMethodExpressionEvaluator expressionEvaluator = new CerbosMethodExpressionEvaluator(beanFactory);
@@ -43,13 +43,13 @@ class DefaultCerbosResourceResolverTest {
         Method method = DocumentService.class.getDeclaredMethod("updateDocument", DocumentDto.class);
         DocumentDto update = new DocumentDto(9);
         CerbosMethodExpressionEvaluator.Context context = expressionEvaluator.context(method, new Object[]{update});
-        CerbosCheckSpec check = new CerbosCheckSpec("update", "", "document", "", "#document.id", "", "findById");
+        CerbosCheckSpec check = new CerbosCheckSpec("update", "", "document", "", "#document", "", "findById");
 
         List<Object> resources = resolver.resolve(new CerbosResourceResolutionRequest(check, method, new Object[]{update}, context));
 
         assertEquals(1, resources.size());
         assertInstanceOf(DocumentDto.class, resources.get(0));
-        assertEquals(9, ((DocumentDto) resources.get(0)).id());
+        assertEquals(9, ((DocumentDto) resources.get(0)).documentId);
     }
 
     @Test
@@ -110,14 +110,11 @@ class DefaultCerbosResourceResolverTest {
     }
 
     static class DocumentDto extends CerbosCommonDto {
-        private final long id;
+        @CerbosId
+        private final long documentId;
 
-        DocumentDto(long id) {
-            this.id = id;
-        }
-
-        public long id() {
-            return id;
+        DocumentDto(long documentId) {
+            this.documentId = documentId;
         }
     }
 

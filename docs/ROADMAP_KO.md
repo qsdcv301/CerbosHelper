@@ -14,9 +14,9 @@
 | SQL predicate 삽입 | `CerbosSqlPredicateInjector`로 분리 |
 | MyBatis interceptor order | `CerbosMyBatisInterceptorOrderStrategy`로 분리 |
 | deny 예외 변환 | `CerbosAccessDeniedHandler`로 분리 |
-| auto-check 대상 제한 | `CerbosHelperConfig.autoCheck(...)`와 property binding으로 분리 |
+| auto-check 대상 제한 | `CerbosHelperConfig.autoCheck(...)`로 분리 |
 | 프로젝트 설정 진입점 | `CerbosHelperConfig`, `CerbosHelperConfigurer`로 분리 |
-| DTO id 명시 | `@CerbosId`와 기본 `id` / `getId()` / `id()` 지원 |
+| DTO id 명시 | `@CerbosId`만 지원하고 이름 기반 id 추론 제거 |
 | read check 최적화 | 단건 read는 service 반환 DTO 기준으로 검사 |
 | write check resource 보강 | update/delete 기존 row 조회 지원 |
 | create check 제외 | `create*`, `insert*`, `save*` auto-check 제외 |

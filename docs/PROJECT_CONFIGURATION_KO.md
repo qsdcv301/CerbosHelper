@@ -130,7 +130,7 @@ public class ProjectCerbosConfig extends CerbosHelperConfig {
 고급 extension을 쓰기 전에 먼저 확인할 것:
 
 1. DTO가 `CerbosCommonDto`를 상속하는가
-2. DTO id가 `id` / `getId()` / `id()` 또는 `@CerbosId`로 노출되는가
+2. DTO resource id 필드/메서드/record component에 `@CerbosId`가 붙어 있는가
 3. SQL projection에 `owner_by`, `owner_org_by`가 있는가
 4. update/delete 대상 mapper에 `{resource}Mapper.findById(...)`가 있는가
 5. auto-check include/exclude가 너무 넓거나 좁지 않은가
@@ -141,8 +141,8 @@ public class ProjectCerbosConfig extends CerbosHelperConfig {
 | --- | --- | --- |
 | 목록 read | MyBatis interceptor가 등록되어 있고 principal을 만들 수 있어야 한다. | mapper method가 `find/select/list/search`이고 반환 타입이 보호 DTO여야 한다. |
 | 단건 read | auto-check 범위에 해당 service가 포함되어야 한다. | service method가 `find/get/select`이고 반환값이 `CerbosCommonDto` 또는 `Optional<CerbosCommonDto>`여야 한다. |
-| update | auto-check 범위에 해당 service가 포함되어야 한다. | service method가 `update/modify`이고 id 인자 또는 DTO id를 제공해야 한다. |
-| delete | auto-check 범위에 해당 service가 포함되어야 한다. | service method가 `delete/remove`이고 id 인자 또는 DTO id를 제공해야 한다. |
+| update | auto-check 범위에 해당 service가 포함되어야 한다. | service method가 `update/modify`이고 `{resource}Id` 인자 또는 `@CerbosId` DTO id를 제공해야 한다. |
+| delete | auto-check 범위에 해당 service가 포함되어야 한다. | service method가 `delete/remove`이고 `{resource}Id` 인자 또는 `@CerbosId` DTO id를 제공해야 한다. |
 | create | 별도 설정하지 않는다. | `create/insert/save`는 auto-check 대상이 아니다. |
 
 ## 7. 비권장 예시

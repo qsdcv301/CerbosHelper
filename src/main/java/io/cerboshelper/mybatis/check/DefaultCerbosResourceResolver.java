@@ -113,7 +113,7 @@ public class DefaultCerbosResourceResolver implements CerbosResourceResolver {
         if (id == null) {
             throw new IllegalArgumentException("Cannot resolve Cerbos resource id from '" + idExpression + "'"
                     + (resourceKind == null || resourceKind.isBlank() ? "" : " for resourceKind=" + resourceKind)
-                    + ". Ensure the protected DTO exposes id/getId for update/delete/view checks.");
+                    + ". Ensure the protected DTO marks its resource id with @CerbosId for update/delete/view checks.");
         }
     }
 

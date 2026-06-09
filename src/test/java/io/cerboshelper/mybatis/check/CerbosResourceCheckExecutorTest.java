@@ -5,6 +5,7 @@ import io.cerboshelper.mybatis.auth.CerbosAuthorizationClient;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalEnvelope;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalResolver;
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
+import io.cerboshelper.mybatis.model.CerbosId;
 import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
@@ -44,7 +45,7 @@ class CerbosResourceCheckExecutorTest {
         executor.authorizeReturnedResource(method, context, new CerbosCheckSpec("view", "", "", "", "", "", ""), document);
 
         assertEquals("view", authorizedAction.get());
-        assertEquals(7, authorizedResource.get().id());
+        assertEquals(7, authorizedResource.get().documentId);
         assertEquals("42", authorizedResource.get().getOwnerBy());
     }
 
@@ -80,14 +81,11 @@ class CerbosResourceCheckExecutorTest {
     }
 
     static class DocumentDto extends CerbosCommonDto {
-        private final long id;
+        @CerbosId
+        private final long documentId;
 
-        DocumentDto(long id) {
-            this.id = id;
-        }
-
-        public long id() {
-            return id;
+        DocumentDto(long documentId) {
+            this.documentId = documentId;
         }
     }
 

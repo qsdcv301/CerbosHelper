@@ -10,10 +10,10 @@ CerbosHelper의 기본 방향은 사내 표준 규칙 자동 적용이다. 보�
 - `resourceKind`는 DTO 클래스명에서 `Dto` suffix를 제거한 뒤 lower camel로 만든다.
 - 기본 SQL scope alias는 `__cerbos_scope`다. 원본 SQL에 같은 identifier가 있으면 suffix를 붙여 충돌을 피한다. custom injector가 alias를 제공하지 않는 경우에는 top-level `FROM` / `JOIN`에서 resource alias를 fallback으로 감지한다.
 - `findAll*`, `debug*`, `trace*`, `admin*`은 자동 보호 대상에서 제외한다.
-- auto-check 적용 대상은 `CerbosHelperConfig.autoCheck(...)` 또는 property binding으로 제한할 수 있다. 프로젝트 표준은 Java config에 모으는 방식이다.
+- auto-check 적용 대상은 `CerbosHelperConfig.autoCheck(...)`로 제한한다. 프로젝트 표준은 Java config에 모으는 방식이다.
 - `create*`, `insert*`, `save*`는 auto-check 대상이 아니다.
 - `find*`, `get*`, `select*` check는 service 반환 DTO를 검사한다.
-- `update*`, `delete*` check는 `@CerbosId`, `getId()` / `id()` 또는 `{resource}Id`로 기존 row를 조회해 검사한다.
+- `update*`, `delete*` check는 `{resource}Id` 인자 또는 `@CerbosId` DTO id로 기존 row를 조회해 검사한다.
 
 ## 확장 Bean
 

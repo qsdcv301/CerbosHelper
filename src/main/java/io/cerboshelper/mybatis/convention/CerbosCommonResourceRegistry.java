@@ -69,11 +69,7 @@ public final class CerbosCommonResourceRegistry {
         if (resource == null) {
             return Optional.empty();
         }
-        Optional<Object> annotatedId = readAnnotatedId(resource);
-        if (annotatedId.isPresent()) {
-            return annotatedId;
-        }
-        return readProperty(resource, "id");
+        return readAnnotatedId(resource);
     }
 
     public Optional<String> resourceKindFromToken(String token) {
@@ -98,33 +94,6 @@ public final class CerbosCommonResourceRegistry {
     private CerbosCommonResource defaultResource(Class<?> resourceType) {
         String resourceKind = decapitalize(stripDtoSuffix(resourceType.getSimpleName()));
         return new CerbosCommonResource(resourceKind, resourceType, resourceKind);
-    }
-
-    private Optional<Object> readProperty(Object resource, String propertyName) {
-        if (resource == null || propertyName == null || propertyName.isBlank()) {
-            return Optional.empty();
-        }
-        for (String methodName : getterNames(propertyName)) {
-            try {
-                Method method = resource.getClass().getMethod(methodName);
-                if (method.getParameterCount() == 0) {
-                    return Optional.ofNullable(method.invoke(resource));
-                }
-            } catch (ReflectiveOperationException | IllegalArgumentException ignored) {
-            }
-        }
-        for (Class<?> current = resource.getClass(); current != null && current != Object.class; current = current.getSuperclass()) {
-            try {
-                Field field = current.getDeclaredField(propertyName);
-                if (Modifier.isStatic(field.getModifiers())) {
-                    return Optional.empty();
-                }
-                field.setAccessible(true);
-                return Optional.ofNullable(field.get(resource));
-            } catch (ReflectiveOperationException | IllegalArgumentException ignored) {
-            }
-        }
-        return Optional.empty();
     }
 
     private Optional<Object> readAnnotatedId(Object resource) {
@@ -193,11 +162,6 @@ public final class CerbosCommonResourceRegistry {
             }
         }
         return Optional.empty();
-    }
-
-    private List<String> getterNames(String propertyName) {
-        String suffix = propertyName.substring(0, 1).toUpperCase(Locale.ROOT) + propertyName.substring(1);
-        return List.of("get" + suffix, "is" + suffix, propertyName);
     }
 
     private static boolean isConcreteCommonDto(Class<?> type) {

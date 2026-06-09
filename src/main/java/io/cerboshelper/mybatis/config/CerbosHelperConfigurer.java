@@ -1,7 +1,6 @@
 package io.cerboshelper.mybatis.config;
 
 import io.cerboshelper.mybatis.auth.CerbosAuthorizationClient;
-import io.cerboshelper.mybatis.auth.CerbosHelperProperties;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalResolver;
 import io.cerboshelper.mybatis.check.CerbosAccessDeniedHandler;
 import io.cerboshelper.mybatis.check.CerbosResourceResolver;
@@ -9,8 +8,6 @@ import io.cerboshelper.mybatis.scope.CerbosMyBatisInterceptorOrderStrategy;
 import io.cerboshelper.mybatis.sql.CerbosResourceColumnRegistry;
 import io.cerboshelper.mybatis.sql.CerbosSqlPredicateInjector;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -22,7 +19,7 @@ public final class CerbosHelperConfigurer {
     private CerbosResourceColumnRegistry resourceColumnRegistry;
     private CerbosSqlPredicateInjector sqlPredicateInjector;
     private CerbosMyBatisInterceptorOrderStrategy interceptorOrderStrategy;
-    private final List<Consumer<CerbosHelperProperties.Auto>> autoCheckCustomizers = new ArrayList<>();
+    private final CerbosAutoCheckOptions autoCheck = new CerbosAutoCheckOptions();
 
     public CerbosHelperConfigurer authorizationClient(CerbosAuthorizationClient authorizationClient) {
         this.authorizationClient = authorizationClient;
@@ -59,9 +56,9 @@ public final class CerbosHelperConfigurer {
         return this;
     }
 
-    public CerbosHelperConfigurer autoCheck(Consumer<CerbosHelperProperties.Auto> customizer) {
+    public CerbosHelperConfigurer autoCheck(Consumer<CerbosAutoCheckOptions> customizer) {
         if (customizer != null) {
-            autoCheckCustomizers.add(customizer);
+            customizer.accept(autoCheck);
         }
         return this;
     }
@@ -94,10 +91,7 @@ public final class CerbosHelperConfigurer {
         return Optional.ofNullable(interceptorOrderStrategy);
     }
 
-    public void apply(CerbosHelperProperties properties) {
-        CerbosHelperProperties.Auto auto = properties.getCheck().getAuto();
-        for (Consumer<CerbosHelperProperties.Auto> customizer : autoCheckCustomizers) {
-            customizer.accept(auto);
-        }
+    public CerbosAutoCheckOptions autoCheck() {
+        return autoCheck;
     }
 }

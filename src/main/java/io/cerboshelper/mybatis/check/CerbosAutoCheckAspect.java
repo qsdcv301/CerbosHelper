@@ -1,6 +1,6 @@
 package io.cerboshelper.mybatis.check;
 
-import io.cerboshelper.mybatis.auth.CerbosHelperProperties;
+import io.cerboshelper.mybatis.config.CerbosAutoCheckOptions;
 import io.cerboshelper.mybatis.convention.CerbosCheckConventionResolver;
 import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -25,17 +25,17 @@ public class CerbosAutoCheckAspect {
 
     private final CerbosCheckConventionResolver conventionResolver;
     private final CerbosResourceCheckExecutor checkExecutor;
-    private final CerbosHelperProperties properties;
+    private final CerbosAutoCheckOptions autoCheck;
     private final Map<String, Pattern> patternCache = new ConcurrentHashMap<>();
 
     public CerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosResourceCheckExecutor checkExecutor) {
-        this(conventionResolver, checkExecutor, new CerbosHelperProperties());
+        this(conventionResolver, checkExecutor, new CerbosAutoCheckOptions());
     }
 
-    public CerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosResourceCheckExecutor checkExecutor, CerbosHelperProperties properties) {
+    public CerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosResourceCheckExecutor checkExecutor, CerbosAutoCheckOptions autoCheck) {
         this.conventionResolver = conventionResolver;
         this.checkExecutor = checkExecutor;
-        this.properties = properties == null ? new CerbosHelperProperties() : properties;
+        this.autoCheck = autoCheck == null ? new CerbosAutoCheckOptions() : autoCheck;
     }
 
     @Around(AUTO_CHECK_POINTCUT)
@@ -70,8 +70,7 @@ public class CerbosAutoCheckAspect {
     }
 
     boolean shouldAutoCheck(Class<?> targetType, Method method) {
-        CerbosHelperProperties.Auto auto = properties.getCheck().getAuto();
-        if (!auto.isEnabled()) {
+        if (!autoCheck.isEnabled()) {
             return false;
         }
         List<String> classNames = List.of(
@@ -80,19 +79,19 @@ public class CerbosAutoCheckAspect {
                 method.getDeclaringClass().getName(),
                 method.getDeclaringClass().getSimpleName()
         );
-        if (!auto.getIncludeClassNamePatterns().isEmpty()
-                && !matchesAny(auto.getIncludeClassNamePatterns(), classNames)) {
+        if (!autoCheck.getIncludeClassNamePatterns().isEmpty()
+                && !matchesAny(autoCheck.getIncludeClassNamePatterns(), classNames)) {
             return false;
         }
-        if (matchesAny(auto.getExcludeClassNamePatterns(), classNames)) {
+        if (matchesAny(autoCheck.getExcludeClassNamePatterns(), classNames)) {
             return false;
         }
         List<String> methodNames = List.of(method.getName());
-        if (!auto.getIncludeMethodNamePatterns().isEmpty()
-                && !matchesAny(auto.getIncludeMethodNamePatterns(), methodNames)) {
+        if (!autoCheck.getIncludeMethodNamePatterns().isEmpty()
+                && !matchesAny(autoCheck.getIncludeMethodNamePatterns(), methodNames)) {
             return false;
         }
-        return !matchesAny(auto.getExcludeMethodNamePatterns(), methodNames);
+        return !matchesAny(autoCheck.getExcludeMethodNamePatterns(), methodNames);
     }
 
     private boolean matchesAny(List<String> patterns, List<String> values) {

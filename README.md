@@ -10,6 +10,7 @@ Spring Boot + MyBatis 프로젝트에서 Cerbos `PlanResources` / `CheckResource
 
 ```java
 public class Document extends CerbosCommonDto {
+    @CerbosId
     private long id;
     private long tenantId;
     private String title;
@@ -33,7 +34,7 @@ public class Document extends CerbosCommonDto {
 
 `resourceKind`는 DTO 클래스명에서 `Dto` suffix를 제거한 뒤 lower camel로 만든다. 예를 들어 `DocumentDto`는 `document`가 된다.
 
-resource id는 기본적으로 `id` / `getId()` / `id()`에서 읽는다. 기본키 필드명이 다르면 DTO 필드나 getter에 `@CerbosId`를 붙인다.
+resource id는 DTO 필드, getter, record component에 붙은 `@CerbosId`로만 읽는다. 기본 `id` / `getId()` / `id()` 이름 추론은 사용하지 않는다.
 
 ```java
 public class UserMemoDto extends CerbosCommonDto {
@@ -42,7 +43,7 @@ public class UserMemoDto extends CerbosCommonDto {
 }
 ```
 
-이 경우 `UserMemoDto`가 `getId()`를 만들지 않아도 `userMemoId`가 Cerbos resource id로 사용된다. Helper는 MyBatis resultMap을 resource id 판단에 사용하지 않는다.
+이 경우 `userMemoId`가 Cerbos resource id로 사용된다. Helper는 MyBatis resultMap이나 필드/메서드 이름을 resource id 판단에 사용하지 않는다.
 
 ## 2. 자동 적용 규칙
 
@@ -88,7 +89,7 @@ WHERE (__cerbos_scope.owner_by = ?)
 - `delete*`, `remove*` -> `delete`
 - `create*`, `insert*`, `save*`는 CerbosHelper auto-check 대상이 아니다.
 - `find*`, `get*`, `select*`는 service method를 먼저 실행하고, 반환된 `CerbosCommonDto` 또는 `Optional<CerbosCommonDto>`의 `ownerBy` / `ownerOrgBy`로 `view` check를 수행한다.
-- `update*`, `delete*`는 `{resource}Id` 인자, `id` / `getId()` / `id()`, 또는 `@CerbosId`로 표시된 DTO id를 사용해 `{resource}Mapper.findById(...)`로 기존 row를 조회한 뒤 그 row를 검사한다.
+- `update*`, `delete*`는 `{resource}Id` 인자 또는 `@CerbosId`로 표시된 DTO id를 사용해 `{resource}Mapper.findById(...)`로 기존 row를 조회한 뒤 그 row를 검사한다.
 - 따라서 Cerbos로 보내는 resource payload에는 `ownerBy` / `ownerOrgBy`가 포함되어야 한다. HTTP 요청 DTO가 아니라 Helper가 검사에 사용하는 resource DTO 기준이다.
 - `findAll*`, `debug*`, `trace*`, `admin*`은 자동 check에서 제외한다.
 
@@ -96,7 +97,7 @@ WHERE (__cerbos_scope.owner_by = ?)
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:1.0.14'
+    implementation 'com.github.qsdcv301:CerbosHelper:1.0.15'
 }
 ```
 

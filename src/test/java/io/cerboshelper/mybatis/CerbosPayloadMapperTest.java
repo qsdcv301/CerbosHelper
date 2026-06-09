@@ -71,7 +71,7 @@ class CerbosPayloadMapperTest {
 
 
     @Test
-    void resourcePayloadSupportsCommonDtoWithoutResourceAnnotation() {
+    void resourcePayloadRequiresCerbosIdAnnotation() {
         CerbosPayloadMapper mapper = new CerbosPayloadMapper(
                 new CerbosHelperProperties(),
                 new CerbosCommonResourceRegistry(List.of(Memo.class))
@@ -101,6 +101,7 @@ class CerbosPayloadMapperTest {
     }
 
     private static class Memo extends CerbosCommonDto {
+        @CerbosId
         private final long id;
 
         private Memo(long id, String ownerBy, Long ownerOrgBy) {

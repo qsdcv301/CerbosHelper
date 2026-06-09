@@ -125,33 +125,10 @@ public class CerbosResourceCheckExecutor {
         if (value instanceof CerbosPrincipalEnvelope envelope) {
             return value.getClass().getSimpleName() + "(id=" + envelope.id() + ", roles=" + envelope.roles() + ")";
         }
-        String id = readId(value).map(Object::toString).orElse("unknown");
         if (CerbosCommonResourceRegistry.isCommonResourceType(value.getClass())) {
-            return value.getClass().getSimpleName() + "(kind=" + decapitalize(value.getClass().getSimpleName()) + ", id=" + id + ")";
+            return value.getClass().getSimpleName() + "(kind=" + decapitalize(value.getClass().getSimpleName()) + ")";
         }
-        return value.getClass().getSimpleName() + "(id=" + id + ")";
-    }
-
-    private Optional<Object> readId(Object value) {
-        for (String methodName : List.of("id", "getId")) {
-            Optional<Object> id = invokeNoArg(value, methodName);
-            if (id.isPresent()) {
-                return id;
-            }
-        }
-        return Optional.empty();
-    }
-
-    private Optional<Object> invokeNoArg(Object value, String methodName) {
-        if (value == null) {
-            return Optional.empty();
-        }
-        try {
-            Method method = value.getClass().getMethod(methodName);
-            return Optional.ofNullable(method.invoke(value));
-        } catch (ReflectiveOperationException | IllegalArgumentException ignored) {
-            return Optional.empty();
-        }
+        return value.getClass().getSimpleName();
     }
 
     private String decapitalize(String value) {

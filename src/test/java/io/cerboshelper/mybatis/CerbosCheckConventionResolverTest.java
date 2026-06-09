@@ -3,6 +3,7 @@ package io.cerboshelper.mybatis;
 import io.cerboshelper.mybatis.convention.CerbosCheckConventionResolver;
 import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
+import io.cerboshelper.mybatis.model.CerbosId;
 import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
@@ -66,14 +67,11 @@ class CerbosCheckConventionResolverTest {
     }
 
     static class DocumentDto extends CerbosCommonDto {
-        private final long id;
+        @CerbosId
+        private final long documentId;
 
-        DocumentDto(long id) {
-            this.id = id;
-        }
-
-        public long id() {
-            return id;
+        DocumentDto(long documentId) {
+            this.documentId = documentId;
         }
     }
 }

@@ -1,6 +1,5 @@
 package io.cerboshelper.mybatis.config;
 
-import io.cerboshelper.mybatis.auth.CerbosHelperProperties;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalEnvelope;
 import io.cerboshelper.mybatis.check.CerbosAccessDeniedHandler;
 import org.junit.jupiter.api.Test;
@@ -34,7 +33,6 @@ class CerbosHelperConfigurerTest {
     @Test
     void configClassCanOverrideAutoCheckScope() {
         CerbosHelperConfigurer configurer = new CerbosHelperConfigurer();
-        CerbosHelperProperties properties = new CerbosHelperProperties();
 
         new CerbosHelperConfig() {
             @Override
@@ -46,9 +44,7 @@ class CerbosHelperConfigurerTest {
             }
         }.configure(configurer);
 
-        configurer.apply(properties);
-
-        assertEquals(List.of(".*CommandService"), properties.getCheck().getAuto().getIncludeClassNamePatterns());
-        assertEquals(List.of(".*UtilService"), properties.getCheck().getAuto().getExcludeClassNamePatterns());
+        assertEquals(List.of(".*CommandService"), configurer.autoCheck().getIncludeClassNamePatterns());
+        assertEquals(List.of(".*UtilService"), configurer.autoCheck().getExcludeClassNamePatterns());
     }
 }
