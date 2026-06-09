@@ -2,7 +2,6 @@ package io.cerboshelper.mybatis.autoconfigure;
 
 import io.cerboshelper.mybatis.auth.CerbosAuthorizationClient;
 import io.cerboshelper.mybatis.check.CerbosAccessDeniedHandler;
-import io.cerboshelper.mybatis.auth.CerbosHelperProperties;
 import io.cerboshelper.mybatis.check.CerbosAutoCheckAspect;
 import io.cerboshelper.mybatis.scope.CerbosMyBatisScopeInterceptor;
 import io.cerboshelper.mybatis.auth.CerbosPayloadMapper;
@@ -35,7 +34,6 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.type.filter.AssignableTypeFilter;
@@ -48,7 +46,6 @@ import java.util.List;
 import java.util.Optional;
 
 @AutoConfiguration
-@EnableConfigurationProperties(CerbosHelperProperties.class)
 public class CerbosHelperAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
@@ -78,16 +75,16 @@ public class CerbosHelperAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    CerbosPayloadMapper cerbosPayloadMapper(CerbosHelperProperties properties, CerbosCommonResourceRegistry registry) {
-        return new CerbosPayloadMapper(properties, registry);
+    CerbosPayloadMapper cerbosPayloadMapper(CerbosHelperConfigurer configurer, CerbosCommonResourceRegistry registry) {
+        return new CerbosPayloadMapper(configurer.client(), registry);
     }
 
     @Bean
     @ConditionalOnClass(CerbosBlockingClient.class)
     @ConditionalOnMissingBean(CerbosAuthorizationClient.class)
-    CerbosAuthorizationClient cerbosAuthorizationClient(CerbosHelperProperties properties, CerbosPayloadMapper payloadMapper, CerbosHelperConfigurer configurer) {
+    CerbosAuthorizationClient cerbosAuthorizationClient(CerbosPayloadMapper payloadMapper, CerbosHelperConfigurer configurer) {
         return configurer.authorizationClient()
-                .orElseGet(() -> new CerbosSdkAuthorizationClient(properties, payloadMapper));
+                .orElseGet(() -> new CerbosSdkAuthorizationClient(configurer.client(), payloadMapper));
     }
 
     @Bean

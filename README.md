@@ -97,18 +97,11 @@ WHERE (__cerbos_scope.owner_by = ?)
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:1.0.15'
+    implementation 'com.github.qsdcv301:CerbosHelper:1.0.16'
 }
 ```
 
-```yaml
-cerboshelper:
-  target: ${CERBOS_TARGET:cerbos:3593}
-  plaintext: true
-  timeout: 1s
-```
-
-auto-check 적용 범위와 프로젝트 예외 변환은 yml보다 `CerbosHelperConfig`에 모으는 방식을 권장한다.
+PDP 연결, auto-check 적용 범위, 프로젝트 예외 변환은 yml property binding이 아니라 `CerbosHelperConfig`에 모은다.
 
 ```java
 @Configuration
@@ -116,6 +109,10 @@ public class ProjectCerbosConfig extends CerbosHelperConfig {
     @Override
     public void configure(CerbosHelperConfigurer configurer) {
         configurer
+                .client(client -> {
+                    client.setTarget(System.getenv().getOrDefault("CERBOS_TARGET", "cerbos:3593"));
+                    client.setPlaintext(true);
+                })
                 .accessDeniedHandler(decision -> new ProjectAccessDeniedException(decision.reason()))
                 .autoCheck(auto -> {
                     auto.setIncludeClassNamePatterns(List.of(".*CommandService", ".*QueryService"));

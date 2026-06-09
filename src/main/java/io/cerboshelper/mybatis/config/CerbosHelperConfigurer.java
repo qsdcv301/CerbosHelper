@@ -19,6 +19,7 @@ public final class CerbosHelperConfigurer {
     private CerbosResourceColumnRegistry resourceColumnRegistry;
     private CerbosSqlPredicateInjector sqlPredicateInjector;
     private CerbosMyBatisInterceptorOrderStrategy interceptorOrderStrategy;
+    private final CerbosClientOptions client = new CerbosClientOptions();
     private final CerbosAutoCheckOptions autoCheck = new CerbosAutoCheckOptions();
 
     public CerbosHelperConfigurer authorizationClient(CerbosAuthorizationClient authorizationClient) {
@@ -56,6 +57,13 @@ public final class CerbosHelperConfigurer {
         return this;
     }
 
+    public CerbosHelperConfigurer client(Consumer<CerbosClientOptions> customizer) {
+        if (customizer != null) {
+            customizer.accept(client);
+        }
+        return this;
+    }
+
     public CerbosHelperConfigurer autoCheck(Consumer<CerbosAutoCheckOptions> customizer) {
         if (customizer != null) {
             customizer.accept(autoCheck);
@@ -89,6 +97,10 @@ public final class CerbosHelperConfigurer {
 
     public Optional<CerbosMyBatisInterceptorOrderStrategy> interceptorOrderStrategy() {
         return Optional.ofNullable(interceptorOrderStrategy);
+    }
+
+    public CerbosClientOptions client() {
+        return client;
     }
 
     public CerbosAutoCheckOptions autoCheck() {

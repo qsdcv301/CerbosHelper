@@ -1,8 +1,8 @@
 package io.cerboshelper.mybatis;
 
-import io.cerboshelper.mybatis.auth.CerbosHelperProperties;
 import io.cerboshelper.mybatis.auth.CerbosPayloadMapper;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalEnvelope;
+import io.cerboshelper.mybatis.config.CerbosClientOptions;
 import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
 import io.cerboshelper.mybatis.model.CerbosId;
@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 class CerbosPayloadMapperTest {
-    private final CerbosPayloadMapper payloadMapper = new CerbosPayloadMapper(new CerbosHelperProperties());
+    private final CerbosPayloadMapper payloadMapper = new CerbosPayloadMapper(new CerbosClientOptions());
 
     @Test
     void preservesPrincipalEnvelopePayload() {
@@ -73,7 +73,7 @@ class CerbosPayloadMapperTest {
     @Test
     void resourcePayloadRequiresCerbosIdAnnotation() {
         CerbosPayloadMapper mapper = new CerbosPayloadMapper(
-                new CerbosHelperProperties(),
+                new CerbosClientOptions(),
                 new CerbosCommonResourceRegistry(List.of(Memo.class))
         );
 
@@ -90,7 +90,7 @@ class CerbosPayloadMapperTest {
     @Test
     void resourcePayloadUsesCerbosIdAnnotationForNonStandardPrimaryKey() {
         CerbosPayloadMapper mapper = new CerbosPayloadMapper(
-                new CerbosHelperProperties(),
+                new CerbosClientOptions(),
                 new CerbosCommonResourceRegistry(List.of(UserMemo.class))
         );
 

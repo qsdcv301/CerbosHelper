@@ -30,6 +30,10 @@ public class ProjectCerbosConfig extends CerbosHelperConfig {
     @Override
     public void configure(CerbosHelperConfigurer configurer) {
         configurer
+                .client(client -> {
+                    client.setTarget(System.getenv().getOrDefault("CERBOS_TARGET", "cerbos:3593"));
+                    client.setPlaintext(true);
+                })
                 .accessDeniedHandler(decision -> new ProjectAccessDeniedException(decision.reason()))
                 .autoCheck(auto -> {
                     auto.setIncludeClassNamePatterns(List.of(".*CommandService", ".*QueryService"));
@@ -43,6 +47,7 @@ public class ProjectCerbosConfig extends CerbosHelperConfig {
 
 - `CommandService`, `QueryService` 계열만 Service AOP auto-check 대상으로 본다.
 - `UtilService`, scheduler/batch 계열은 자동 check에서 제외한다.
+- PDP 접속값도 `CerbosHelperConfig.client(...)`에서 명시한다.
 - Cerbos deny는 프로젝트 예외로 변환한다.
 - Spring Security principal은 Helper 기본값을 사용한다.
 

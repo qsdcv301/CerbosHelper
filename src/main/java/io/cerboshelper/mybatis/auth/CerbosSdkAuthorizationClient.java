@@ -13,6 +13,7 @@ import dev.cerbos.sdk.builders.AttributeValue;
 import dev.cerbos.sdk.builders.Principal;
 import dev.cerbos.sdk.builders.Resource;
 import dev.cerbos.sdk.builders.ResourceAction;
+import io.cerboshelper.mybatis.config.CerbosClientOptions;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,25 +22,25 @@ import java.util.Map;
 public class CerbosSdkAuthorizationClient implements CerbosAuthorizationClient {
     private final CerbosBlockingClient client;
     private final CerbosPayloadMapper payloadMapper;
-    private final CerbosHelperProperties properties;
+    private final CerbosClientOptions clientOptions;
     private final ObjectMapper objectMapper;
 
-    public CerbosSdkAuthorizationClient(CerbosHelperProperties properties, CerbosPayloadMapper payloadMapper) {
-        this(properties, payloadMapper, new ObjectMapper());
+    public CerbosSdkAuthorizationClient(CerbosClientOptions clientOptions, CerbosPayloadMapper payloadMapper) {
+        this(clientOptions, payloadMapper, new ObjectMapper());
     }
 
-    CerbosSdkAuthorizationClient(CerbosHelperProperties properties, CerbosPayloadMapper payloadMapper, ObjectMapper objectMapper) {
-        this.properties = properties;
+    CerbosSdkAuthorizationClient(CerbosClientOptions clientOptions, CerbosPayloadMapper payloadMapper, ObjectMapper objectMapper) {
+        this.clientOptions = clientOptions == null ? new CerbosClientOptions() : clientOptions;
         this.payloadMapper = payloadMapper;
         this.objectMapper = objectMapper;
-        this.client = buildClient(properties);
+        this.client = buildClient(this.clientOptions);
     }
 
     @Override
     public JsonNode planResources(Object principal, String resourceKind, String action) {
         PlanResourcesResult result = client.plan(
                 principal(principal),
-                Resource.newInstance(resourceKind).withPolicyVersion(properties.getPolicyVersion()),
+                Resource.newInstance(resourceKind).withPolicyVersion(clientOptions.getPolicyVersion()),
                 action
         );
         return json(result);
@@ -165,18 +166,18 @@ public class CerbosSdkAuthorizationClient implements CerbosAuthorizationClient {
         }
     }
 
-    private CerbosBlockingClient buildClient(CerbosHelperProperties properties) {
+    private CerbosBlockingClient buildClient(CerbosClientOptions clientOptions) {
         try {
-            CerbosClientBuilder builder = new CerbosClientBuilder(properties.getTarget())
-                    .withTimeout(properties.getTimeout());
-            if (properties.isPlaintext()) {
+            CerbosClientBuilder builder = new CerbosClientBuilder(clientOptions.getTarget())
+                    .withTimeout(clientOptions.getTimeout());
+            if (clientOptions.isPlaintext()) {
                 builder.withPlaintext();
-            } else if (properties.isInsecure()) {
+            } else if (clientOptions.isInsecure()) {
                 builder.withInsecure();
             }
             return builder.buildBlockingClient();
         } catch (CerbosClientBuilder.InvalidClientConfigurationException exception) {
-            throw new IllegalStateException("Cannot create Cerbos SDK client for target=" + properties.getTarget(), exception);
+            throw new IllegalStateException("Cannot create Cerbos SDK client for target=" + clientOptions.getTarget(), exception);
         }
     }
 }

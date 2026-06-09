@@ -1,6 +1,7 @@
 package io.cerboshelper.mybatis.auth;
 
 import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
+import io.cerboshelper.mybatis.config.CerbosClientOptions;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -12,15 +13,15 @@ import java.util.Locale;
 import java.util.Map;
 
 public class CerbosPayloadMapper {
-    private final CerbosHelperProperties properties;
+    private final CerbosClientOptions clientOptions;
     private final CerbosCommonResourceRegistry registry;
 
-    public CerbosPayloadMapper(CerbosHelperProperties properties) {
-        this(properties, new CerbosCommonResourceRegistry(List.of()));
+    public CerbosPayloadMapper(CerbosClientOptions clientOptions) {
+        this(clientOptions, new CerbosCommonResourceRegistry(List.of()));
     }
 
-    public CerbosPayloadMapper(CerbosHelperProperties properties, CerbosCommonResourceRegistry registry) {
-        this.properties = properties;
+    public CerbosPayloadMapper(CerbosClientOptions clientOptions, CerbosCommonResourceRegistry registry) {
+        this.clientOptions = clientOptions == null ? new CerbosClientOptions() : clientOptions;
         this.registry = registry;
     }
 
@@ -36,8 +37,8 @@ public class CerbosPayloadMapper {
         Map<String, Object> attr = attributes(principal);
         return Map.of(
                 "id", String.valueOf(requireAny(attr, "id")),
-                "policyVersion", properties.getPolicyVersion(),
-                "roles", properties.getPrincipalRoles(),
+                "policyVersion", clientOptions.getPolicyVersion(),
+                "roles", clientOptions.getPrincipalRoles(),
                 "attr", attr
         );
     }
@@ -50,7 +51,7 @@ public class CerbosPayloadMapper {
         return Map.of(
                 "id", String.valueOf(resourceId),
                 "kind", resourceKind,
-                "policyVersion", properties.getPolicyVersion(),
+                "policyVersion", clientOptions.getPolicyVersion(),
                 "attr", attr
         );
     }

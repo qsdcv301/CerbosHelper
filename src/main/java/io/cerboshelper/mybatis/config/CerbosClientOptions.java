@@ -1,13 +1,10 @@
-package io.cerboshelper.mybatis.auth;
-
-import org.springframework.boot.context.properties.ConfigurationProperties;
+package io.cerboshelper.mybatis.config;
 
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 
-@ConfigurationProperties(prefix = "cerboshelper")
-public class CerbosHelperProperties {
+public class CerbosClientOptions {
     private String baseUrl = "http://localhost:3592";
     private String target = "";
     private boolean plaintext = true;
@@ -64,7 +61,7 @@ public class CerbosHelperProperties {
     }
 
     public void setPolicyVersion(String policyVersion) {
-        this.policyVersion = policyVersion;
+        this.policyVersion = policyVersion == null || policyVersion.isBlank() ? "default" : policyVersion;
     }
 
     public List<String> getPrincipalRoles() {
