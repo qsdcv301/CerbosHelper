@@ -5,7 +5,6 @@ import io.cerboshelper.mybatis.auth.CerbosAuthorizationClient;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalEnvelope;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalResolver;
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
-import io.cerboshelper.mybatis.model.CerbosId;
 import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
@@ -42,7 +41,7 @@ class CerbosResourceCheckExecutorTest {
         DocumentDto document = new DocumentDto(7);
         document.setOwnerBy("42");
 
-        executor.authorizeReturnedResource(method, context, new CerbosCheckSpec("view", "", "", "", "", "", ""), document);
+        executor.authorizeReturnedResource(method, context, new CerbosCheckSpec("view", "", ""), document);
 
         assertEquals("view", authorizedAction.get());
         assertEquals(7, authorizedResource.get().documentId);
@@ -67,7 +66,7 @@ class CerbosResourceCheckExecutorTest {
 
         SecurityException exception = assertThrows(
                 SecurityException.class,
-                () -> executor.authorizeReturnedResource(method, context, new CerbosCheckSpec("view", "", "", "", "", "", ""), new DocumentDto(7))
+                () -> executor.authorizeReturnedResource(method, context, new CerbosCheckSpec("view", "", ""), new DocumentDto(7))
         );
 
         assertTrue(exception.getMessage().contains("reason=MISSING_OWNER"));
@@ -81,7 +80,6 @@ class CerbosResourceCheckExecutorTest {
     }
 
     static class DocumentDto extends CerbosCommonDto {
-        @CerbosId
         private final long documentId;
 
         DocumentDto(long documentId) {

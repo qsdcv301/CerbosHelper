@@ -10,7 +10,6 @@ Spring Boot + MyBatis 프로젝트에서 Cerbos `PlanResources` / `CheckResource
 
 ```java
 public class Document extends CerbosCommonDto {
-    @CerbosId
     private long id;
     private long tenantId;
     private String title;
@@ -34,16 +33,7 @@ public class Document extends CerbosCommonDto {
 
 `resourceKind`는 DTO 클래스명에서 `Dto` suffix를 제거한 뒤 lower camel로 만든다. 예를 들어 `DocumentDto`는 `document`가 된다.
 
-resource id는 DTO 필드, getter, record component에 붙은 `@CerbosId`로만 읽는다. 기본 `id` / `getId()` / `id()` 이름 추론은 사용하지 않는다.
-
-```java
-public class UserMemoDto extends CerbosCommonDto {
-    @CerbosId
-    private Integer userMemoId;
-}
-```
-
-이 경우 `userMemoId`가 Cerbos resource id로 사용된다. Helper는 MyBatis resultMap이나 필드/메서드 이름을 resource id 판단에 사용하지 않는다.
+Cerbos `CheckResources` 요청에는 resource id 문자열이 필요하지만, Helper는 DTO 기본키를 요구하지 않는다. 이 id는 Cerbos 요청/응답 매칭용 correlation key일 뿐이며 정책 판단은 `ownerBy` / `ownerOrgBy` attribute로 수행한다.
 
 ## 2. 자동 적용 규칙
 
@@ -89,15 +79,15 @@ WHERE (__cerbos_scope.owner_by = ?)
 - `delete*`, `remove*` -> `delete`
 - `create*`, `insert*`, `save*`는 CerbosHelper auto-check 대상이 아니다.
 - `find*`, `get*`, `select*`는 service method를 먼저 실행하고, 반환된 `CerbosCommonDto` 또는 `Optional<CerbosCommonDto>`의 `ownerBy` / `ownerOrgBy`로 `view` check를 수행한다.
-- `update*`, `delete*`는 `{resource}Id` 인자 또는 `@CerbosId`로 표시된 DTO id를 사용해 `{resource}Mapper.findById(...)`로 기존 row를 조회한 뒤 그 row를 검사한다.
-- 따라서 Cerbos로 보내는 resource payload에는 `ownerBy` / `ownerOrgBy`가 포함되어야 한다. HTTP 요청 DTO가 아니라 Helper가 검사에 사용하는 resource DTO 기준이다.
+- `update*`, `delete*`는 service method로 전달된 `CerbosCommonDto`를 그대로 검사한다. Helper는 `{resource}Mapper.findById(...)` 재조회를 하지 않는다.
+- 따라서 Cerbos로 보내는 resource payload에는 `ownerBy` / `ownerOrgBy`가 포함되어야 한다. Helper는 이 값을 데이터 접근 시점에 이미 신뢰 가능한 값으로 본다.
 - `findAll*`, `debug*`, `trace*`, `admin*`은 자동 check에서 제외한다.
 
 ## 3. 설치
 
 ```groovy
 dependencies {
-    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.16'
+    implementation 'com.github.qsdcv301:CerbosHelper:v1.0.17'
 }
 ```
 
@@ -151,7 +141,7 @@ resourcePolicy:
 신규 도메인은 도메인마다 별도 설정 Bean을 만들지 않는다. 기본 사내 규칙에서 벗어난 복잡 SQL이나 예외 lookup을 연결해야 하는 경우에만 프로젝트 common/config에서 조정한다.
 
 - `CerbosPrincipalResolver`: 현재 사용자 principal 연결
-- `CerbosResourceResolver`: 단건/쓰기 resource lookup 규칙 교체
+- `CerbosResourceResolver`: 단건/쓰기 resource assembly 규칙 교체
 - `CerbosResourceColumnRegistry`: derived table, CTE 같은 고급 SQL column allowlist 구성
 - `CerbosSqlPredicateInjector`: 복잡 SQL에 대한 predicate 삽입 규칙 교체
 - `CerbosMyBatisInterceptorOrderStrategy`: MyBatis plugin 순서 조정
@@ -179,9 +169,9 @@ public class ProjectCerbosConfig extends CerbosHelperConfig {
 }
 ```
 
-권장 override는 적용 범위, principal, deny 예외 변환이다. `select`, `find`, `update`, `delete`, `findById` 같은 내부 convention prefix를 프로젝트마다 갈아끼우는 방식은 권장하지 않는다. prefix convention은 Helper 기본 규칙으로 유지하고, 프로젝트는 어떤 service class/method를 스캔할지와 어떤 인증/예외 체계를 쓸지만 조정한다.
+권장 override는 적용 범위, principal, deny 예외 변환이다. `select`, `find`, `update`, `delete` 같은 내부 convention prefix를 프로젝트마다 갈아끼우는 방식은 권장하지 않는다. prefix convention은 Helper 기본 규칙으로 유지하고, 프로젝트는 어떤 service class/method를 스캔할지와 어떤 인증/예외 체계를 쓸지만 조정한다.
 
-`CerbosHelperConfig`에서 설정할 수 있는 항목은 `CerbosAuthorizationClient`, `CerbosPrincipalResolver`, `CerbosAccessDeniedHandler`, `CerbosResourceResolver`, `CerbosResourceColumnRegistry`, `CerbosSqlPredicateInjector`, `CerbosMyBatisInterceptorOrderStrategy`, auto-check include/exclude pattern이다. 다만 `CerbosResourceResolver`, `CerbosResourceColumnRegistry`, `CerbosSqlPredicateInjector`, `CerbosMyBatisInterceptorOrderStrategy`는 복잡 SQL, 비표준 mapper lookup, MyBatis plugin 순서 충돌 같은 고급 예외에서만 사용한다.
+`CerbosHelperConfig`에서 설정할 수 있는 항목은 `CerbosAuthorizationClient`, `CerbosPrincipalResolver`, `CerbosAccessDeniedHandler`, `CerbosResourceResolver`, `CerbosResourceColumnRegistry`, `CerbosSqlPredicateInjector`, `CerbosMyBatisInterceptorOrderStrategy`, auto-check include/exclude pattern이다. 다만 `CerbosResourceResolver`, `CerbosResourceColumnRegistry`, `CerbosSqlPredicateInjector`, `CerbosMyBatisInterceptorOrderStrategy`는 복잡 SQL, 비표준 resource assembly, MyBatis plugin 순서 충돌 같은 고급 예외에서만 사용한다.
 
 자세한 프로젝트 설정 예제는 `docs/PROJECT_CONFIGURATION_KO.md`를 본다.
 
@@ -191,9 +181,9 @@ CerbosHelper는 업무 모듈을 대신 구현하는 엔진이 아니라 Spring/
 
 | 영역 | 책임 |
 | --- | --- |
-| Helper library | `CerbosCommonDto`, `@CerbosId`, resource registry, Service AOP, MyBatis interceptor, Cerbos SDK client, plan-to-SQL 변환, 기본 resource resolver, extension interface 제공 |
+| Helper library | `CerbosCommonDto`, resource registry, Service AOP, MyBatis interceptor, Cerbos SDK client, plan-to-SQL 변환, 기본 resource resolver, extension interface 제공 |
 | Project common/config | Helper 적용 범위 설정, MyBatis plugin 등록/순서 확인, deny 예외 변환, Spring Security principal 구성, Spring Security 미사용 시 principal resolver 제공, 필요한 경우 고급 extension 연결 |
-| Domain module | DTO 상속, `@CerbosId`, `owner_by` / `owner_org_by` 컬럼과 projection, mapper method naming, `{resource}Mapper.findById(...)`, Service `id + dto` signature 정렬 |
+| Domain module | DTO 상속, `owner_by` / `owner_org_by` 컬럼과 projection, mapper method naming, Service method에 신뢰 가능한 owner DTO 전달 |
 
 예를 들어 RuneHS는 `RunehsCerbosHelperConfig extends CerbosHelperConfig`에서 `CommandService` / `QueryService` 계열만 auto-check 대상으로 묶고 `UtilService`를 제외한다. deny decision도 같은 config에서 표준 `BusinessException`으로 변환한다. 이런 적용 범위와 예외 변환은 Helper 코어를 수정하지 않고 프로젝트 설정으로 조정하는 영역이다.
 

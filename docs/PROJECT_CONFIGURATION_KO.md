@@ -15,10 +15,9 @@ CerbosHelper는 Spring Boot + MyBatis 기준의 공통 라이브러리다. 프�
 - `find*`, `get*`, `select*` -> `view`
 - `update*`, `modify*` -> `update`
 - `delete*`, `remove*` -> `delete`
-- `{resource}Mapper.findById(...)` update/delete 기존 row 조회 convention
 - `owner_by`, `owner_org_by` owner column convention
 
-이 convention이 모듈 하나에서 맞지 않으면 먼저 DTO/mapper/service shape을 정렬한다. 반복되는 구조적 예외일 때만 고급 extension을 사용한다.
+이 convention이 모듈 하나에서 맞지 않으면 먼저 DTO/mapper/service shape을 정렬한다. update/delete check 대상 DTO에는 데이터 접근 시점에 신뢰 가능한 `ownerBy` / `ownerOrgBy`가 포함되어야 한다. 반복되는 구조적 예외일 때만 고급 extension을 사용한다.
 
 ## 2. 가장 일반적인 설정
 
@@ -126,7 +125,7 @@ public class ProjectCerbosConfig extends CerbosHelperConfig {
 
 | extension | 사용할 때 |
 | --- | --- |
-| `CerbosResourceResolver` | update/delete 기존 row를 `{resource}Mapper.findById(...)`로 찾을 수 없을 때 |
+| `CerbosResourceResolver` | service method 인자만으로 검사 대상 `CerbosCommonDto`를 만들 수 없을 때 |
 | `CerbosResourceColumnRegistry` | 기본 owner column mapping 외에 SQL alias/column allowlist가 필요할 때 |
 | `CerbosSqlPredicateInjector` | CTE, UNION, aggregate, 복잡 join 때문에 기본 derived table wrapper가 맞지 않을 때 |
 | `CerbosMyBatisInterceptorOrderStrategy` | PageHelper 같은 다른 MyBatis plugin과 순서 충돌이 있을 때 |
@@ -135,10 +134,9 @@ public class ProjectCerbosConfig extends CerbosHelperConfig {
 고급 extension을 쓰기 전에 먼저 확인할 것:
 
 1. DTO가 `CerbosCommonDto`를 상속하는가
-2. DTO resource id 필드/메서드/record component에 `@CerbosId`가 붙어 있는가
-3. SQL projection에 `owner_by`, `owner_org_by`가 있는가
-4. update/delete 대상 mapper에 `{resource}Mapper.findById(...)`가 있는가
-5. auto-check include/exclude가 너무 넓거나 좁지 않은가
+2. SQL projection 또는 service assembly 결과에 `owner_by`, `owner_org_by`가 있는가
+3. update/delete service method가 신뢰 가능한 owner DTO를 받는가
+4. auto-check include/exclude가 너무 넓거나 좁지 않은가
 
 ## 6. read/update/delete 설정 체크
 
@@ -146,8 +144,8 @@ public class ProjectCerbosConfig extends CerbosHelperConfig {
 | --- | --- | --- |
 | 목록 read | MyBatis interceptor가 등록되어 있고 principal을 만들 수 있어야 한다. | mapper method가 `find/select/list/search`이고 반환 타입이 보호 DTO여야 한다. |
 | 단건 read | auto-check 범위에 해당 service가 포함되어야 한다. | service method가 `find/get/select`이고 반환값이 `CerbosCommonDto` 또는 `Optional<CerbosCommonDto>`여야 한다. |
-| update | auto-check 범위에 해당 service가 포함되어야 한다. | service method가 `update/modify`이고 `{resource}Id` 인자 또는 `@CerbosId` DTO id를 제공해야 한다. |
-| delete | auto-check 범위에 해당 service가 포함되어야 한다. | service method가 `delete/remove`이고 `{resource}Id` 인자 또는 `@CerbosId` DTO id를 제공해야 한다. |
+| update | auto-check 범위에 해당 service가 포함되어야 한다. | service method가 `update/modify`이고 신뢰 가능한 `ownerBy` / `ownerOrgBy`를 포함한 `CerbosCommonDto`를 받아야 한다. |
+| delete | auto-check 범위에 해당 service가 포함되어야 한다. | service method가 `delete/remove`이고 신뢰 가능한 `ownerBy` / `ownerOrgBy`를 포함한 `CerbosCommonDto`를 받아야 한다. |
 | create | 별도 설정하지 않는다. | `create/insert/save`는 auto-check 대상이 아니다. |
 
 ## 7. 비권장 예시
@@ -157,7 +155,6 @@ public class ProjectCerbosConfig extends CerbosHelperConfig {
 - 프로젝트마다 `select`, `find`, `update`, `delete` prefix 의미를 바꾸는 설정을 추가한다.
 - 단위 모듈마다 `CerbosPrincipalResolver`를 만든다.
 - owner column 이름을 업무별로 다르게 둔다.
-- 요청 DTO의 owner 값을 기준으로 update/delete 권한을 판단한다.
 - 복잡 SQL 하나 때문에 전체 SQL injector를 먼저 교체한다.
 
 권장 방향은 Helper convention을 유지하고, 프로젝트 common/config에서 scan 범위와 인증/예외 연결만 얇게 조정하는 것이다.

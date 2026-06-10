@@ -9,16 +9,16 @@
 | Cerbos PDP 호출 | `CerbosAuthorizationClient`로 분리 |
 | 현재 principal 해석 | `CerbosPrincipalResolver`로 분리 |
 | payload 변환 | `CerbosPayloadMapper`로 분리 |
-| 단건/쓰기 resource lookup | `CerbosResourceResolver`로 분리 |
+| 단건/쓰기 resource assembly | `CerbosResourceResolver`로 분리 |
 | SQL predicate 생성 | `CerbosPlanToSqlConverter`로 분리 |
 | SQL predicate 삽입 | `CerbosSqlPredicateInjector`로 분리 |
 | MyBatis interceptor order | `CerbosMyBatisInterceptorOrderStrategy`로 분리 |
 | deny 예외 변환 | `CerbosAccessDeniedHandler`로 분리 |
 | auto-check 대상 제한 | `CerbosHelperConfig.autoCheck(...)`로 분리 |
 | 프로젝트 설정 진입점 | `CerbosHelperConfig`, `CerbosHelperConfigurer`로 분리 |
-| DTO id 명시 | `@CerbosId`만 지원하고 이름 기반 id 추론 제거 |
+| DTO id 명시 | 제거. Helper는 DTO 기본키를 요구하지 않고 owner attribute만 검사 |
 | read check 최적화 | 단건 read는 service 반환 DTO 기준으로 검사 |
-| write check resource 보강 | update/delete 기존 row 조회 지원 |
+| write check resource 보강 | update/delete service DTO owner 검사 지원 |
 | create check 제외 | `create*`, `insert*`, `save*` auto-check 제외 |
 
 ## 우선순위 높음
@@ -26,7 +26,7 @@
 | 항목 | 이유 | 방향 |
 | --- | --- | --- |
 | 고급 SQL injector 구현 | `WITH`, `UNION`, aggregate는 실제 수요가 높다. | `CteTarget`, `UnionBranch` injector를 별도 구현과 테스트로 제공 |
-| resolver 전용 테스트 | `DefaultCerbosResourceResolver`가 기본 CRUD 사용감의 핵심이다. | mapper/finder/id/withId/custom resolver 케이스 테스트 |
+| resolver 전용 테스트 | `DefaultCerbosResourceResolver`가 기본 CRUD 사용감의 핵심이다. | DTO 인자/resource expression/custom resolver 케이스 테스트 |
 | interceptor order 전략 테스트 | PageHelper 호환의 핵심이다. | default strategy와 no-op strategy를 분리 검증 |
 
 ## 우선순위 중간
@@ -43,7 +43,7 @@
 
 | 항목 | 이유 | 방향 |
 | --- | --- | --- |
-| identity applier 분리 | `withId(...)` convention을 더 줄일 수 있다. | `CerbosResourceIdentityApplier` 추가 |
+| check payload 전략 분리 | synthetic resource id나 attr 포함 정책을 바꿔야 할 수 있다. | payload strategy interface 추가 |
 | Spring Security adapter | core는 framework 중립을 유지해야 한다. | 별도 예제 또는 optional adapter 문서 |
 | 문서 예제 프로젝트 분리 | README가 길어질 수 있다. | advanced docs와 sample apps를 분리 유지 |
 

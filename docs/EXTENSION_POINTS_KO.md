@@ -13,7 +13,7 @@ CerbosHelper의 기본 방향은 사내 표준 규칙 자동 적용이다. 보�
 - auto-check 적용 대상은 `CerbosHelperConfig.autoCheck(...)`로 제한한다. 프로젝트 표준은 Java config에 모으는 방식이다.
 - `create*`, `insert*`, `save*`는 auto-check 대상이 아니다.
 - `find*`, `get*`, `select*` check는 service 반환 DTO를 검사한다.
-- `update*`, `delete*` check는 `{resource}Id` 인자 또는 `@CerbosId` DTO id로 기존 row를 조회해 검사한다.
+- `update*`, `delete*` check는 service method로 전달된 `CerbosCommonDto`의 `ownerBy` / `ownerOrgBy`를 그대로 검사한다.
 
 ## 확장 Bean
 
@@ -24,7 +24,7 @@ CerbosHelper의 기본 방향은 사내 표준 규칙 자동 적용이다. 보�
 | `CerbosHelperConfig` | 없음 | 프로젝트 설정을 한 클래스에 모아 auto-check 범위, principal, 예외 변환을 연결 |
 | `CerbosPrincipalResolver` | Spring Security resolver | Spring Security를 쓰지 않거나 프로젝트 인증/session context에서 principal을 만들어야 할 때 |
 | `CerbosAccessDeniedHandler` | `SecurityException` handler | `CerbosDeniedDecision.reason()` 기반 프로젝트 표준 예외 변환 |
-| `CerbosResourceResolver` | `DefaultCerbosResourceResolver` | `{resource}Mapper.findById(...)` convention이 맞지 않는 고급 예외 lookup 연결 |
+| `CerbosResourceResolver` | `DefaultCerbosResourceResolver` | service method 인자만으로 검사 대상 `CerbosCommonDto`를 만들 수 없는 예외 연결 |
 | `CerbosResourceColumnRegistry` | `CerbosResourceColumns` | derived table, CTE처럼 원본 resource row가 감춰지는 고급 조회 처리 |
 | `CerbosSqlPredicateInjector` | `DefaultCerbosSqlPredicateInjector` | 기본 `SELECT __cerbos_scope.* FROM (...) __cerbos_scope WHERE (...)`와 다른 SQL shape 처리 |
 | `CerbosMyBatisInterceptorOrderStrategy` | `DefaultCerbosMyBatisInterceptorOrderStrategy` | MyBatis plugin 순서 수동 관리 |
@@ -48,7 +48,7 @@ class ProjectCerbosConfig extends CerbosHelperConfig {
 
 권장 우선순위는 `autoCheck(...)` scan 범위 제한, Spring Security 미사용 시 `principalResolver`, 프로젝트 표준 예외로 바꾸는 `accessDeniedHandler`다. `resourceResolver`, `resourceColumnRegistry`, `sqlPredicateInjector`, `interceptorOrderStrategy`는 convention으로 해결되지 않는 고급 예외에서만 사용한다.
 
-`find`, `select`, `update`, `delete`, `findById` prefix 자체를 프로젝트마다 override하는 방향은 피한다. 이 문구들은 Helper convention으로 유지하고, 프로젝트는 보호할 class/method 범위를 include/exclude로 조정한다.
+`find`, `select`, `update`, `delete` prefix 자체를 프로젝트마다 override하는 방향은 피한다. 이 문구들은 Helper convention으로 유지하고, 프로젝트는 보호할 class/method 범위를 include/exclude로 조정한다.
 
 ## 라이브러리 / 프로젝트 / 모듈 경계
 
@@ -59,7 +59,7 @@ class ProjectCerbosConfig extends CerbosHelperConfig {
 | Spring Security principal에 이미 필요한 attr이 있다. | 라이브러리 기본값 | 기본 resolver가 getter/record/Map 기반 attr을 Cerbos principal attr로 펼친다. |
 | Spring Security를 쓰지 않는다. | 프로젝트 common/config | custom `CerbosPrincipalResolver`가 맞다. Helper 코어에 프로젝트 인증 지식을 넣지 않는다. |
 | principal attr 계산 자체가 프로젝트 인증 구조에 묶여 있다. | 프로젝트 common/config | custom `CerbosPrincipalResolver`가 맞다. Helper 코어에 프로젝트 인증 지식을 넣지 않는다. |
-| update/delete 대상 row를 찾는 mapper convention이 다르다. | 프로젝트 common/config | custom `CerbosResourceResolver`로 예외 lookup만 연결한다. |
+| update/delete 검사 대상 DTO가 service method 인자만으로 만들어지지 않는다. | 프로젝트 common/config | custom `CerbosResourceResolver`로 예외 assembly만 연결한다. |
 | 특정 mapper SQL이 join/CTE/aggregate 때문에 owner row projection을 잃는다. | 단위 모듈 우선, 필요 시 프로젝트 common/config | 먼저 query split이나 projection 정렬을 검토하고, 반복되는 패턴이면 `CerbosSqlPredicateInjector` / `CerbosResourceColumnRegistry`를 교체한다. |
 | owner column 이름을 업무별로 바꾸고 싶다. | 설계 재검토 | 현재 Helper 표준은 `owner_by`, `owner_org_by` 고정이다. 신규 표준 프로젝트는 컬럼을 맞춘다. |
 | 새로운 업무 action이나 scope 모델이 필요하다. | 정책/모듈 설계 | Helper는 action/resource 전달 경로를 제공하고, 정책 의미는 Cerbos policy와 업무 모듈이 결정한다. |
@@ -70,8 +70,8 @@ class ProjectCerbosConfig extends CerbosHelperConfig {
 | 개입 지점 | 파일 | 확장 판단 |
 | --- | --- | --- |
 | Service AOP | `CerbosAutoCheckAspect` | 적용 범위 문제는 설정으로 풀고, method convention 자체가 반복적으로 부족할 때만 Helper 변경을 검토한다. |
-| Check 실행 | `CerbosResourceCheckExecutor` | deny 변환은 handler, resource lookup은 resolver로 분리한다. |
+| Check 실행 | `CerbosResourceCheckExecutor` | deny 변환은 handler, resource assembly는 resolver로 분리한다. |
 | Mapper SELECT | `CerbosMyBatisScopeInterceptor` | SQL shape 문제는 injector/column registry 또는 query split로 분리한다. |
-| DTO id | `@CerbosId` | 기본키 필드명이 `id`가 아니면 DTO 필드/메서드에 명시한다. MyBatis resultMap은 id 판단에 사용하지 않는다. |
+| Resource payload id | `CerbosPayloadMapper` | Cerbos SDK 요청/응답 매칭용 synthetic id를 만든다. 정책 판단용 기본키가 아니다. |
 
 정리하면, 라이브러리는 interception과 convention 엔진을 제공하고, 프로젝트 common/config는 적용 범위와 예외 연결을 담당하며, 단위 모듈은 Helper가 읽을 수 있는 DTO/mapper/service shape을 맞춘다.

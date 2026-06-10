@@ -22,20 +22,10 @@ public final class CerbosCheckConventionResolver {
             return Optional.empty();
         }
         if ("view".equals(action)) {
-            return Optional.of(new CerbosCheckSpec(action, "", "", "", "", "", ""));
+            return Optional.of(new CerbosCheckSpec(action, "", ""));
         }
         Optional<ResourceArgument> resourceArgument = resourceArgument(method, context);
-        if (resourceArgument.isPresent()) {
-            String idVariable = idVariableFor(resourceArgument.get().resourceKind(), context)
-                    .orElseGet(() -> idExpressionForResourceArgument(
-                            action,
-                            resourceArgument.get().variableName(),
-                            resourceArgument.get().resourceKind()
-                    ));
-            return Optional.of(new CerbosCheckSpec(action, "", resourceArgument.get().variableName(), "", idVariable, "", "findById"));
-        }
-        Optional<IdReference> idReference = idReference(method, context);
-        return idReference.map(reference -> new CerbosCheckSpec(action, "", "", reference.resourceKind(), reference.variableName(), "", "findById"));
+        return resourceArgument.map(argument -> new CerbosCheckSpec(action, "", argument.variableName()));
     }
 
     private Optional<ResourceArgument> resourceArgument(Method method, CerbosMethodExpressionEvaluator.Context context) {
@@ -49,56 +39,6 @@ public final class CerbosCheckConventionResolver {
             }
         }
         return Optional.empty();
-    }
-
-    private Optional<IdReference> idReference(Method method, CerbosMethodExpressionEvaluator.Context context) {
-        for (String variableName : context.variableNames()) {
-            if (variableName.startsWith("p") || variableName.startsWith("a")) {
-                continue;
-            }
-            Object value = context.variable(variableName);
-            if (value == null || !variableName.endsWith("Id")) {
-                continue;
-            }
-            String token = variableName.substring(0, variableName.length() - "Id".length());
-            Optional<String> resourceKind = registry.resourceKindFromToken(token);
-            if (resourceKind.isPresent()) {
-                return Optional.of(new IdReference(resourceKind.get(), variableName));
-            }
-        }
-        return resourceKindFromMethodName(method.getName())
-                .flatMap(resourceKind -> idVariableFor(resourceKind, context).map(idVariable -> new IdReference(resourceKind, idVariable)));
-    }
-
-    private Optional<String> resourceKindFromMethodName(String methodName) {
-        String normalized = methodName.replaceFirst("^(findVisible|find|select|get|update|modify|delete|remove)", "");
-        return registry.resourceKindFromToken(normalized);
-    }
-
-    private Optional<String> idVariableFor(String resourceKind, CerbosMethodExpressionEvaluator.Context context) {
-        String expected = resourceKind + "Id";
-        if (context.variable(expected) != null) {
-            return Optional.of(expected);
-        }
-        if (context.variable("id") != null) {
-            return Optional.of("id");
-        }
-        return context.variableNames().stream()
-                .filter(name -> !name.startsWith("p") && !name.startsWith("a"))
-                .filter(name -> name.endsWith("Id"))
-                .filter(name -> context.variable(name) != null)
-                .findFirst();
-    }
-
-    private String idExpressionForResourceArgument(String action, String variableName, String resourceKind) {
-        if (!usesExistingResource(action)) {
-            return "";
-        }
-        return "#" + variableName;
-    }
-
-    private boolean usesExistingResource(String action) {
-        return "update".equals(action) || "delete".equals(action);
     }
 
     private boolean isNamedParameter(String variableName, Method method) {
@@ -138,6 +78,4 @@ public final class CerbosCheckConventionResolver {
     private record ResourceArgument(String variableName, String resourceKind) {
     }
 
-    private record IdReference(String resourceKind, String variableName) {
-    }
 }

@@ -3,7 +3,6 @@ package io.cerboshelper.mybatis;
 import io.cerboshelper.mybatis.convention.CerbosCheckConventionResolver;
 import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
-import io.cerboshelper.mybatis.model.CerbosId;
 import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
@@ -34,21 +33,17 @@ class CerbosCheckConventionResolverTest {
         var check = resolver.resolve(method, expressionEvaluator.context(method, new Object[]{1L})).orElseThrow();
 
         assertEquals("view", check.action());
-        assertEquals("", check.resourceKind());
-        assertEquals("", check.id());
-        assertEquals("findById", check.finder());
+        assertEquals("", check.resource());
     }
 
     @Test
-    void updateMethodsStillResolveExistingResourceCheck() throws Exception {
+    void updateMethodsResolveIncomingDtoResourceCheck() throws Exception {
         Method method = DocumentService.class.getDeclaredMethod("updateDocument", long.class, DocumentDto.class);
 
         var check = resolver.resolve(method, expressionEvaluator.context(method, new Object[]{1L, new DocumentDto(1)})).orElseThrow();
 
         assertEquals("update", check.action());
-        assertEquals("", check.resourceKind());
-        assertEquals("documentId", check.id());
-        assertEquals("findById", check.finder());
+        assertEquals("document", check.resource());
     }
 
     static class DocumentService {
@@ -67,7 +62,6 @@ class CerbosCheckConventionResolverTest {
     }
 
     static class DocumentDto extends CerbosCommonDto {
-        @CerbosId
         private final long documentId;
 
         DocumentDto(long documentId) {

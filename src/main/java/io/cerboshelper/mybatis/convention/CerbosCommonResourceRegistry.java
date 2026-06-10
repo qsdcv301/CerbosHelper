@@ -1,12 +1,8 @@
 package io.cerboshelper.mybatis.convention;
 
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
-import io.cerboshelper.mybatis.model.CerbosId;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -65,13 +61,6 @@ public final class CerbosCommonResourceRegistry {
         return resourceForType(type).map(CerbosCommonResource::resourceKind);
     }
 
-    public Optional<Object> resourceId(Object resource) {
-        if (resource == null) {
-            return Optional.empty();
-        }
-        return readAnnotatedId(resource);
-    }
-
     public Optional<String> resourceKindFromToken(String token) {
         if (token == null || token.isBlank()) {
             return Optional.empty();
@@ -94,74 +83,6 @@ public final class CerbosCommonResourceRegistry {
     private CerbosCommonResource defaultResource(Class<?> resourceType) {
         String resourceKind = decapitalize(stripDtoSuffix(resourceType.getSimpleName()));
         return new CerbosCommonResource(resourceKind, resourceType, resourceKind);
-    }
-
-    private Optional<Object> readAnnotatedId(Object resource) {
-        Class<?> resourceType = resource.getClass();
-        if (resourceType.isRecord()) {
-            Optional<Object> recordId = readAnnotatedRecordComponent(resource);
-            if (recordId.isPresent()) {
-                return recordId;
-            }
-        }
-        Optional<Object> methodId = readAnnotatedMethod(resource);
-        if (methodId.isPresent()) {
-            return methodId;
-        }
-        return readAnnotatedField(resource);
-    }
-
-    private Optional<Object> readAnnotatedRecordComponent(Object resource) {
-        for (RecordComponent component : resource.getClass().getRecordComponents()) {
-            if (!component.isAnnotationPresent(CerbosId.class)) {
-                continue;
-            }
-            try {
-                return Optional.ofNullable(component.getAccessor().invoke(resource));
-            } catch (ReflectiveOperationException exception) {
-                throw new IllegalStateException("Cannot read @CerbosId record component: " + component.getName(), exception);
-            }
-        }
-        return Optional.empty();
-    }
-
-    private Optional<Object> readAnnotatedMethod(Object resource) {
-        for (Method method : resource.getClass().getMethods()) {
-            if (!method.isAnnotationPresent(CerbosId.class)) {
-                continue;
-            }
-            if (method.getParameterCount() != 0) {
-                throw new IllegalStateException("@CerbosId method must not declare parameters: "
-                        + resource.getClass().getName() + "." + method.getName());
-            }
-            try {
-                return Optional.ofNullable(method.invoke(resource));
-            } catch (ReflectiveOperationException exception) {
-                throw new IllegalStateException("Cannot read @CerbosId method: " + method.getName(), exception);
-            }
-        }
-        return Optional.empty();
-    }
-
-    private Optional<Object> readAnnotatedField(Object resource) {
-        for (Class<?> current = resource.getClass(); current != null && current != Object.class; current = current.getSuperclass()) {
-            for (Field field : current.getDeclaredFields()) {
-                if (!field.isAnnotationPresent(CerbosId.class)) {
-                    continue;
-                }
-                if (Modifier.isStatic(field.getModifiers())) {
-                    throw new IllegalStateException("@CerbosId field must not be static: "
-                            + current.getName() + "." + field.getName());
-                }
-                try {
-                    field.setAccessible(true);
-                    return Optional.ofNullable(field.get(resource));
-                } catch (ReflectiveOperationException exception) {
-                    throw new IllegalStateException("Cannot read @CerbosId field: " + field.getName(), exception);
-                }
-            }
-        }
-        return Optional.empty();
     }
 
     private static boolean isConcreteCommonDto(Class<?> type) {

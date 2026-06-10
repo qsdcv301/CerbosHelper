@@ -112,8 +112,7 @@ public class CerbosResourceCheckExecutor {
     private List<Object> requireResources(Method method, List<Object> resources) {
         if (resources.isEmpty()) {
             throw new IllegalArgumentException("Cannot resolve Cerbos resource for " + method.getDeclaringClass().getName() + "." + method.getName()
-                    + "(). Register a CerbosResourceResolver bean, pass a CerbosCommonDto argument, "
-                    + "or use a {resource}Id parameter that matches a {resource}Mapper.findById(...) bean.");
+                    + "(). Register a CerbosResourceResolver bean or pass a CerbosCommonDto argument with ownerBy/ownerOrgBy values.");
         }
         return resources;
     }

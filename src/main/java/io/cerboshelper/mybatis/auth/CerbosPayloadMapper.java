@@ -44,10 +44,13 @@ public class CerbosPayloadMapper {
     }
 
     public Map<String, Object> resourcePayload(Object resource) {
+        return resourcePayload(resource, resourceId(resource));
+    }
+
+    public Map<String, Object> resourcePayload(Object resource, String resourceId) {
         String resourceKind = registry.resourceKindForType(resource.getClass())
                 .orElseThrow(() -> new IllegalArgumentException("Cerbos resource must extend CerbosCommonDto: " + resource.getClass().getName()));
         Map<String, Object> attr = attributes(resource);
-        Object resourceId = requireResourceId(resource);
         return Map.of(
                 "id", String.valueOf(resourceId),
                 "kind", resourceKind,
@@ -57,15 +60,9 @@ public class CerbosPayloadMapper {
     }
 
     public String resourceId(Object resource) {
-        return String.valueOf(requireResourceId(resource));
-    }
-
-    private Object requireResourceId(Object resource) {
-        java.util.Optional<Object> annotatedId = registry.resourceId(resource);
-        if (annotatedId.isPresent()) {
-            return annotatedId.get();
-        }
-        throw new IllegalArgumentException("Missing Cerbos resource id. Add @CerbosId to the protected DTO id field/method/record component.");
+        String resourceKind = registry.resourceKindForType(resource.getClass())
+                .orElseThrow(() -> new IllegalArgumentException("Cerbos resource must extend CerbosCommonDto: " + resource.getClass().getName()));
+        return resourceKind + "-" + Integer.toUnsignedString(System.identityHashCode(resource));
     }
 
     private Map<String, Object> attributes(Object value) {

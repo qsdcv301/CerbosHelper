@@ -5,7 +5,6 @@ import io.cerboshelper.mybatis.auth.CerbosPrincipalEnvelope;
 import io.cerboshelper.mybatis.config.CerbosClientOptions;
 import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
-import io.cerboshelper.mybatis.model.CerbosId;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -71,7 +70,7 @@ class CerbosPayloadMapperTest {
 
 
     @Test
-    void resourcePayloadRequiresCerbosIdAnnotation() {
+    void resourcePayloadUsesSyntheticIdAndOwnerAttributes() {
         CerbosPayloadMapper mapper = new CerbosPayloadMapper(
                 new CerbosClientOptions(),
                 new CerbosCommonResourceRegistry(List.of(Memo.class))
@@ -79,29 +78,29 @@ class CerbosPayloadMapperTest {
 
         Map<String, Object> payload = mapper.resourcePayload(new Memo(10L, "user-1", 100L));
 
-        assertEquals("10", payload.get("id"));
+        org.junit.jupiter.api.Assertions.assertTrue(String.valueOf(payload.get("id")).startsWith("memo-"));
         assertEquals("memo", payload.get("kind"));
         @SuppressWarnings("unchecked")
         Map<String, Object> attr = (Map<String, Object>) payload.get("attr");
+        assertEquals(10L, attr.get("id"));
         assertEquals("user-1", attr.get("ownerBy"));
         assertEquals(100L, attr.get("ownerOrgBy"));
     }
 
     @Test
-    void resourcePayloadUsesCerbosIdAnnotationForNonStandardPrimaryKey() {
+    void resourcePayloadCanUseCallerSuppliedCorrelationId() {
         CerbosPayloadMapper mapper = new CerbosPayloadMapper(
                 new CerbosClientOptions(),
                 new CerbosCommonResourceRegistry(List.of(UserMemo.class))
         );
 
-        Map<String, Object> payload = mapper.resourcePayload(new UserMemo(15, "user-1", 100L));
+        Map<String, Object> payload = mapper.resourcePayload(new UserMemo(15, "user-1", 100L), "resource-1");
 
-        assertEquals("15", payload.get("id"));
+        assertEquals("resource-1", payload.get("id"));
         assertEquals("userMemo", payload.get("kind"));
     }
 
     private static class Memo extends CerbosCommonDto {
-        @CerbosId
         private final long id;
 
         private Memo(long id, String ownerBy, Long ownerOrgBy) {
@@ -112,7 +111,6 @@ class CerbosPayloadMapperTest {
     }
 
     private static class UserMemo extends CerbosCommonDto {
-        @CerbosId
         private final Integer userMemoId;
 
         private UserMemo(Integer userMemoId, String ownerBy, Long ownerOrgBy) {
