@@ -21,13 +21,13 @@ public class DefaultCerbosMyBatisInterceptorOrderStrategy implements CerbosMyBat
     private void moveCerbosInterceptorFirst(SqlSessionFactory sqlSessionFactory) {
         List<Interceptor> interceptors = mutableInterceptors(sqlSessionFactory);
         List<Interceptor> cerbosInterceptors = interceptors.stream()
-                .filter(CerbosMyBatisScopeInterceptor.class::isInstance)
+                .filter(CerbosMyBatisInterceptor.class::isInstance)
                 .toList();
         if (cerbosInterceptors.isEmpty()) {
             return;
         }
 
-        interceptors.removeIf(CerbosMyBatisScopeInterceptor.class::isInstance);
+        interceptors.removeIf(CerbosMyBatisInterceptor.class::isInstance);
         // MyBatis wraps plugins in registration order, so the last interceptor runs first.
         // Keep PageHelper outside Cerbos so it can build count/page SQL before scope injection.
         interceptors.addAll(0, cerbosInterceptors);

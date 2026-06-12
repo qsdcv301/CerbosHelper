@@ -109,7 +109,7 @@ public final class CerbosResourceColumns implements CerbosResourceColumnRegistry
         private void addColumn(Map<String, String> columns, String attributeName, String explicitColumn, String qualifier) {
             String defaultColumn = switch (attributeName) {
                 case CerbosCommonResourceRegistry.OWNER_BY_ATTR -> CerbosCommonResourceRegistry.OWNER_BY_COLUMN;
-                case CerbosCommonResourceRegistry.OWNER_ORG_BY_ATTR -> CerbosCommonResourceRegistry.OWNER_ORG_BY_COLUMN;
+                case CerbosCommonResourceRegistry.OWNER_GROUP_BY_ATTR -> CerbosCommonResourceRegistry.OWNER_GROUP_BY_COLUMN;
                 default -> camelToSnake(attributeName);
             };
             String column = explicitColumn != null && !explicitColumn.isBlank()

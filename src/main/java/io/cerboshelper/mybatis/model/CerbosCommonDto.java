@@ -2,7 +2,7 @@ package io.cerboshelper.mybatis.model;
 
 public abstract class CerbosCommonDto {
     private String ownerBy;
-    private Long ownerOrgBy;
+    private Long ownerGroupBy;
 
     protected CerbosCommonDto() {
     }
@@ -15,11 +15,11 @@ public abstract class CerbosCommonDto {
         this.ownerBy = ownerBy;
     }
 
-    public Long getOwnerOrgBy() {
-        return ownerOrgBy;
+    public Long getOwnerGroupBy() {
+        return ownerGroupBy;
     }
 
-    public void setOwnerOrgBy(Long ownerOrgBy) {
-        this.ownerOrgBy = ownerOrgBy;
+    public void setOwnerGroupBy(Long ownerGroupBy) {
+        this.ownerGroupBy = ownerGroupBy;
     }
 }

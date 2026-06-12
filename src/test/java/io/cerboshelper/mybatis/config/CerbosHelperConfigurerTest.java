@@ -2,6 +2,7 @@ package io.cerboshelper.mybatis.config;
 
 import io.cerboshelper.mybatis.auth.CerbosPrincipalEnvelope;
 import io.cerboshelper.mybatis.check.CerbosAccessDeniedHandler;
+import io.cerboshelper.mybatis.model.CerbosCommonDto;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -31,20 +32,28 @@ class CerbosHelperConfigurerTest {
     }
 
     @Test
-    void configClassCanOverrideAutoCheckScope() {
+    void configClassCanDeclareResourcesAndMethodRules() {
         CerbosHelperConfigurer configurer = new CerbosHelperConfigurer();
 
         new CerbosHelperConfig() {
             @Override
             public void configure(CerbosHelperConfigurer configurer) {
-                configurer.autoCheck(auto -> {
-                    auto.setIncludeClassNamePatterns(List.of(".*CommandService"));
-                    auto.setExcludeClassNamePatterns(List.of(".*UtilService"));
-                });
+                configurer
+                        .resources(resources -> resources.resource("document", DocumentDto.class))
+                        .methodRules(methods -> {
+                            methods.scope("read", "find", "list");
+                            methods.before("edit", "update");
+                            methods.excludeNames("findById");
+                        });
             }
         }.configure(configurer);
 
-        assertEquals(List.of(".*CommandService"), configurer.autoCheck().getIncludeClassNamePatterns());
-        assertEquals(List.of(".*UtilService"), configurer.autoCheck().getExcludeClassNamePatterns());
+        assertEquals("document", configurer.resources().resources().get(0).resourceKind());
+        assertEquals(List.of("find", "list"), configurer.methodRules().scopeRules().get(0).methodNamePrefixes());
+        assertEquals("edit", configurer.methodRules().checkRules().get(0).action());
+        assertEquals(List.of("findById"), configurer.methodRules().excludeMethodNames());
+    }
+
+    static class DocumentDto extends CerbosCommonDto {
     }
 }

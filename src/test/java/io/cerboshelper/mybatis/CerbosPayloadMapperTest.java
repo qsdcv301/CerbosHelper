@@ -84,7 +84,7 @@ class CerbosPayloadMapperTest {
         Map<String, Object> attr = (Map<String, Object>) payload.get("attr");
         assertEquals(10L, attr.get("id"));
         assertEquals("user-1", attr.get("ownerBy"));
-        assertEquals(100L, attr.get("ownerOrgBy"));
+        assertEquals(100L, attr.get("ownerGroupBy"));
     }
 
     @Test
@@ -103,20 +103,20 @@ class CerbosPayloadMapperTest {
     private static class Memo extends CerbosCommonDto {
         private final long id;
 
-        private Memo(long id, String ownerBy, Long ownerOrgBy) {
+        private Memo(long id, String ownerBy, Long ownerGroupBy) {
             this.id = id;
             setOwnerBy(ownerBy);
-            setOwnerOrgBy(ownerOrgBy);
+            setOwnerGroupBy(ownerGroupBy);
         }
     }
 
     private static class UserMemo extends CerbosCommonDto {
         private final Integer userMemoId;
 
-        private UserMemo(Integer userMemoId, String ownerBy, Long ownerOrgBy) {
+        private UserMemo(Integer userMemoId, String ownerBy, Long ownerGroupBy) {
             this.userMemoId = userMemoId;
             setOwnerBy(ownerBy);
-            setOwnerOrgBy(ownerOrgBy);
+            setOwnerGroupBy(ownerGroupBy);
         }
     }
 }

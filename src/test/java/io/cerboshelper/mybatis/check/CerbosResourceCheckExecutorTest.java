@@ -5,11 +5,8 @@ import io.cerboshelper.mybatis.auth.CerbosAuthorizationClient;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalEnvelope;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalResolver;
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
-import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,62 +18,66 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CerbosResourceCheckExecutorTest {
     @Test
-    void viewCheckUsesReturnedResourceAfterServiceExecution() throws Exception {
-        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+    void mappedResourceCheckPassesDtoDirectlyToAuthorizationClient() {
         CerbosPrincipalResolver principalResolver = () -> Optional.of(
                 new CerbosPrincipalEnvelope("42", List.of("authenticated"), Map.of(), "default")
         );
         AtomicReference<DocumentDto> authorizedResource = new AtomicReference<>();
         AtomicReference<String> authorizedAction = new AtomicReference<>();
-        CerbosAuthorizationClient authorizationClient = new AllowingAuthorizationClient(authorizedResource, authorizedAction);
         CerbosResourceCheckExecutor executor = new CerbosResourceCheckExecutor(
-                authorizationClient,
-                beanFactory,
+                new AllowingAuthorizationClient(authorizedResource, authorizedAction),
                 principalResolver,
-                CerbosAccessDeniedHandler.securityException(),
-                new DefaultCerbosResourceResolver(beanFactory, new CerbosMethodExpressionEvaluator(beanFactory))
+                CerbosAccessDeniedHandler.securityException()
         );
-        Method method = DocumentService.class.getDeclaredMethod("getDocument", long.class);
-        CerbosMethodExpressionEvaluator.Context context = executor.context(method, new Object[]{7L});
         DocumentDto document = new DocumentDto(7);
         document.setOwnerBy("42");
+        document.setOwnerGroupBy(100L);
 
-        executor.authorizeReturnedResource(method, context, new CerbosCheckSpec("view", "", ""), document);
+        executor.authorizeMappedResource("test.DocumentMapper.update", "update", document);
 
-        assertEquals("view", authorizedAction.get());
+        assertEquals("update", authorizedAction.get());
         assertEquals(7, authorizedResource.get().documentId);
         assertEquals("42", authorizedResource.get().getOwnerBy());
     }
 
     @Test
-    void checkFailsBeforeCerbosCallWhenOwnerAttributesAreMissing() throws Exception {
-        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+    void mappedResourceCheckFailsBeforeCerbosCallWhenOwnerAttributesAreMissing() {
         CerbosPrincipalResolver principalResolver = () -> Optional.of(
                 new CerbosPrincipalEnvelope("42", List.of("authenticated"), Map.of(), "default")
         );
         CerbosResourceCheckExecutor executor = new CerbosResourceCheckExecutor(
                 new AllowingAuthorizationClient(new AtomicReference<>(), new AtomicReference<>()),
-                beanFactory,
                 principalResolver,
-                CerbosAccessDeniedHandler.securityException(),
-                new DefaultCerbosResourceResolver(beanFactory, new CerbosMethodExpressionEvaluator(beanFactory))
+                CerbosAccessDeniedHandler.securityException()
         );
-        Method method = DocumentService.class.getDeclaredMethod("getDocument", long.class);
-        CerbosMethodExpressionEvaluator.Context context = executor.context(method, new Object[]{7L});
 
         SecurityException exception = assertThrows(
                 SecurityException.class,
-                () -> executor.authorizeReturnedResource(method, context, new CerbosCheckSpec("view", "", ""), new DocumentDto(7))
+                () -> executor.authorizeMappedResource("test.DocumentMapper.update", "update", new DocumentDto(7))
         );
 
         assertTrue(exception.getMessage().contains("reason=MISSING_OWNER"));
     }
 
-    static class DocumentService {
-        @SuppressWarnings("unused")
-        DocumentDto getDocument(long documentId) {
-            return null;
-        }
+    @Test
+    void mappedResourceCheckFailsBeforeCerbosCallWhenEitherOwnerAttributeIsMissing() {
+        CerbosPrincipalResolver principalResolver = () -> Optional.of(
+                new CerbosPrincipalEnvelope("42", List.of("authenticated"), Map.of(), "default")
+        );
+        CerbosResourceCheckExecutor executor = new CerbosResourceCheckExecutor(
+                new AllowingAuthorizationClient(new AtomicReference<>(), new AtomicReference<>()),
+                principalResolver,
+                CerbosAccessDeniedHandler.securityException()
+        );
+        DocumentDto document = new DocumentDto(7);
+        document.setOwnerBy("42");
+
+        SecurityException exception = assertThrows(
+                SecurityException.class,
+                () -> executor.authorizeMappedResource("test.DocumentMapper.update", "update", document)
+        );
+
+        assertTrue(exception.getMessage().contains("reason=MISSING_OWNER"));
     }
 
     static class DocumentDto extends CerbosCommonDto {

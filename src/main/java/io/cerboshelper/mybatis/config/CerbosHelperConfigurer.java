@@ -3,7 +3,6 @@ package io.cerboshelper.mybatis.config;
 import io.cerboshelper.mybatis.auth.CerbosAuthorizationClient;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalResolver;
 import io.cerboshelper.mybatis.check.CerbosAccessDeniedHandler;
-import io.cerboshelper.mybatis.check.CerbosResourceResolver;
 import io.cerboshelper.mybatis.scope.CerbosMyBatisInterceptorOrderStrategy;
 import io.cerboshelper.mybatis.sql.CerbosResourceColumnRegistry;
 import io.cerboshelper.mybatis.sql.CerbosSqlPredicateInjector;
@@ -15,12 +14,12 @@ public final class CerbosHelperConfigurer {
     private CerbosAuthorizationClient authorizationClient;
     private CerbosPrincipalResolver principalResolver;
     private CerbosAccessDeniedHandler accessDeniedHandler;
-    private CerbosResourceResolver resourceResolver;
     private CerbosResourceColumnRegistry resourceColumnRegistry;
     private CerbosSqlPredicateInjector sqlPredicateInjector;
     private CerbosMyBatisInterceptorOrderStrategy interceptorOrderStrategy;
     private final CerbosClientOptions client = new CerbosClientOptions();
-    private final CerbosAutoCheckOptions autoCheck = new CerbosAutoCheckOptions();
+    private final CerbosResourceOptions resources = new CerbosResourceOptions();
+    private final CerbosMethodRuleOptions methodRules = new CerbosMethodRuleOptions();
 
     public CerbosHelperConfigurer authorizationClient(CerbosAuthorizationClient authorizationClient) {
         this.authorizationClient = authorizationClient;
@@ -34,11 +33,6 @@ public final class CerbosHelperConfigurer {
 
     public CerbosHelperConfigurer accessDeniedHandler(CerbosAccessDeniedHandler accessDeniedHandler) {
         this.accessDeniedHandler = accessDeniedHandler;
-        return this;
-    }
-
-    public CerbosHelperConfigurer resourceResolver(CerbosResourceResolver resourceResolver) {
-        this.resourceResolver = resourceResolver;
         return this;
     }
 
@@ -64,9 +58,16 @@ public final class CerbosHelperConfigurer {
         return this;
     }
 
-    public CerbosHelperConfigurer autoCheck(Consumer<CerbosAutoCheckOptions> customizer) {
+    public CerbosHelperConfigurer resources(Consumer<CerbosResourceOptions> customizer) {
         if (customizer != null) {
-            customizer.accept(autoCheck);
+            customizer.accept(resources);
+        }
+        return this;
+    }
+
+    public CerbosHelperConfigurer methodRules(Consumer<CerbosMethodRuleOptions> customizer) {
+        if (customizer != null) {
+            customizer.accept(methodRules);
         }
         return this;
     }
@@ -81,10 +82,6 @@ public final class CerbosHelperConfigurer {
 
     public Optional<CerbosAccessDeniedHandler> accessDeniedHandler() {
         return Optional.ofNullable(accessDeniedHandler);
-    }
-
-    public Optional<CerbosResourceResolver> resourceResolver() {
-        return Optional.ofNullable(resourceResolver);
     }
 
     public Optional<CerbosResourceColumnRegistry> resourceColumnRegistry() {
@@ -103,7 +100,11 @@ public final class CerbosHelperConfigurer {
         return client;
     }
 
-    public CerbosAutoCheckOptions autoCheck() {
-        return autoCheck;
+    public CerbosResourceOptions resources() {
+        return resources;
+    }
+
+    public CerbosMethodRuleOptions methodRules() {
+        return methodRules;
     }
 }

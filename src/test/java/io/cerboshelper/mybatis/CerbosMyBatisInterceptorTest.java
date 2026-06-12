@@ -3,10 +3,14 @@ package io.cerboshelper.mybatis;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.cerboshelper.mybatis.auth.CerbosAuthorizationClient;
+import io.cerboshelper.mybatis.check.CerbosAccessDeniedHandler;
+import io.cerboshelper.mybatis.check.CerbosResourceCheckExecutor;
+import io.cerboshelper.mybatis.config.CerbosMethodRuleOptions;
 import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
-import io.cerboshelper.mybatis.convention.CerbosScopeConventionResolver;
 import io.cerboshelper.mybatis.model.CerbosCommonDto;
-import io.cerboshelper.mybatis.scope.CerbosMyBatisScopeInterceptor;
+import io.cerboshelper.mybatis.rule.CerbosCheckRuleResolver;
+import io.cerboshelper.mybatis.rule.CerbosScopeRuleResolver;
+import io.cerboshelper.mybatis.scope.CerbosMyBatisInterceptor;
 import io.cerboshelper.mybatis.sql.CerbosPlanToSqlConverter;
 import io.cerboshelper.mybatis.sql.CerbosResourceColumns;
 import io.cerboshelper.mybatis.sql.DefaultCerbosSqlPredicateInjector;
@@ -25,19 +29,19 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-class CerbosMyBatisScopeInterceptorTest {
+class CerbosMyBatisInterceptorTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
     void resolvesPageHelperCountStatementBackToConventionScopedMapperMethod() throws Exception {
-        CerbosMyBatisScopeInterceptor interceptor = new CerbosMyBatisScopeInterceptor(
+        CerbosMyBatisInterceptor interceptor = new CerbosMyBatisInterceptor(
                 null,
                 null,
                 null,
                 null,
-                new CerbosScopeConventionResolver(new CerbosCommonResourceRegistry(List.of(DocumentResource.class)))
+                scopeResolver(methods -> methods.scope("read", "find"))
         );
-        Method findScopedMethod = CerbosMyBatisScopeInterceptor.class.getDeclaredMethod("findScopedMethod", MappedStatement.class);
+        Method findScopedMethod = CerbosMyBatisInterceptor.class.getDeclaredMethod("findScopedMethod", MappedStatement.class);
         findScopedMethod.setAccessible(true);
 
         Object scopedMethod = findScopedMethod.invoke(
@@ -49,8 +53,28 @@ class CerbosMyBatisScopeInterceptorTest {
     }
 
     @Test
+    void doesNotResolveScopedMapperWithoutConfiguredRules() throws Exception {
+        CerbosMyBatisInterceptor interceptor = new CerbosMyBatisInterceptor(
+                null,
+                null,
+                null,
+                null,
+                new CerbosScopeRuleResolver(new CerbosCommonResourceRegistry(List.of(DocumentResource.class)), new CerbosMethodRuleOptions())
+        );
+        Method findScopedMethod = CerbosMyBatisInterceptor.class.getDeclaredMethod("findScopedMethod", MappedStatement.class);
+        findScopedMethod.setAccessible(true);
+
+        Object scopedMethod = findScopedMethod.invoke(
+                interceptor,
+                mappedStatement(ConventionMapper.class.getName() + ".findDocuments")
+        );
+
+        org.junit.jupiter.api.Assertions.assertNull(scopedMethod);
+    }
+
+    @Test
     void appliesPlanPredicateWithInjectorProvidedAlias() throws Exception {
-        CerbosMyBatisScopeInterceptor interceptor = new CerbosMyBatisScopeInterceptor(
+        CerbosMyBatisInterceptor interceptor = new CerbosMyBatisInterceptor(
                 new PlanAuthorizationClient(),
                 new CerbosPlanToSqlConverter(CerbosResourceColumns.builder()
                         .resource("document", DocumentResource.class)
@@ -59,7 +83,7 @@ class CerbosMyBatisScopeInterceptorTest {
                 () -> Optional.of("user-1"),
                 null
         );
-        Method applyCerbosScope = CerbosMyBatisScopeInterceptor.class.getDeclaredMethod(
+        Method applyCerbosScope = CerbosMyBatisInterceptor.class.getDeclaredMethod(
                 "applyCerbosScope",
                 MappedStatement.class,
                 BoundSql.class,
@@ -99,18 +123,72 @@ class CerbosMyBatisScopeInterceptorTest {
         assertEquals("user-1", scoped.getAdditionalParameter("__cerbos_scope_param_0"));
     }
 
+    @Test
+    void appliesCommandCheckFromMapperUpdateStatement() throws Exception {
+        CerbosMethodRuleOptions rules = new CerbosMethodRuleOptions();
+        rules.before("edit", "update");
+        CerbosCommonResourceRegistry registry = new CerbosCommonResourceRegistry(List.of(DocumentResource.class));
+        RecordingAuthorizationClient authorizationClient = new RecordingAuthorizationClient();
+        CerbosResourceCheckExecutor checkExecutor = new CerbosResourceCheckExecutor(
+                authorizationClient,
+                () -> Optional.of("user-1"),
+                CerbosAccessDeniedHandler.securityException()
+        );
+        CerbosMyBatisInterceptor interceptor = new CerbosMyBatisInterceptor(
+                null,
+                null,
+                null,
+                null,
+                null,
+                new CerbosCheckRuleResolver(registry, rules),
+                checkExecutor
+        );
+        Method applyCerbosCommandCheck = CerbosMyBatisInterceptor.class.getDeclaredMethod(
+                "applyCerbosCommandCheck",
+                MappedStatement.class,
+                Object.class
+        );
+        applyCerbosCommandCheck.setAccessible(true);
+        DocumentResource document = new DocumentResource();
+        document.setOwnerBy("user-1");
+        document.setOwnerGroupBy(100L);
+
+        applyCerbosCommandCheck.invoke(
+                interceptor,
+                mappedStatement(CommandMapper.class.getName() + ".update", SqlCommandType.UPDATE),
+                document
+        );
+
+        assertEquals("edit", authorizationClient.action);
+        assertEquals(document, authorizationClient.resource);
+    }
+
     private MappedStatement mappedStatement(String id) {
+        return mappedStatement(id, SqlCommandType.SELECT);
+    }
+
+    private MappedStatement mappedStatement(String id, SqlCommandType sqlCommandType) {
         Configuration configuration = new Configuration();
         return new MappedStatement.Builder(
                 configuration,
                 id,
                 parameter -> new BoundSql(configuration, "SELECT 1", List.of(), parameter),
-                SqlCommandType.SELECT
+                sqlCommandType
         ).build();
+    }
+
+    private CerbosScopeRuleResolver scopeResolver(java.util.function.Consumer<CerbosMethodRuleOptions> customizer) {
+        CerbosMethodRuleOptions rules = new CerbosMethodRuleOptions();
+        customizer.accept(rules);
+        return new CerbosScopeRuleResolver(new CerbosCommonResourceRegistry(List.of(DocumentResource.class)), rules);
     }
 
     interface ConventionMapper {
         List<DocumentResource> findDocuments();
+    }
+
+    interface CommandMapper {
+        int update(DocumentResource document);
     }
 
     static class DocumentResource extends CerbosCommonDto {
@@ -155,6 +233,18 @@ class CerbosMyBatisScopeInterceptorTest {
         @Override
         public JsonNode checkResourcesRaw(Object principal, List<?> resources, String action) {
             return null;
+        }
+    }
+
+    static class RecordingAuthorizationClient extends PlanAuthorizationClient {
+        private Object resource;
+        private String action;
+
+        @Override
+        public boolean isAllowed(Object principal, Object resource, String action) {
+            this.resource = resource;
+            this.action = action;
+            return true;
         }
     }
 }

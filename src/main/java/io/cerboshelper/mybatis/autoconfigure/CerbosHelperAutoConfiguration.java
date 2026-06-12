@@ -2,46 +2,34 @@ package io.cerboshelper.mybatis.autoconfigure;
 
 import io.cerboshelper.mybatis.auth.CerbosAuthorizationClient;
 import io.cerboshelper.mybatis.check.CerbosAccessDeniedHandler;
-import io.cerboshelper.mybatis.check.CerbosAutoCheckAspect;
-import io.cerboshelper.mybatis.scope.CerbosMyBatisScopeInterceptor;
+import io.cerboshelper.mybatis.scope.CerbosMyBatisInterceptor;
 import io.cerboshelper.mybatis.auth.CerbosPayloadMapper;
 import io.cerboshelper.mybatis.sql.CerbosPlanToSqlConverter;
 import io.cerboshelper.mybatis.auth.CerbosPrincipalResolver;
 import io.cerboshelper.mybatis.auth.CerbosSdkAuthorizationClient;
 import io.cerboshelper.mybatis.auth.SpringSecurityCerbosPrincipalResolver;
 import io.cerboshelper.mybatis.check.CerbosResourceCheckExecutor;
-import io.cerboshelper.mybatis.check.CerbosResourceResolver;
-import io.cerboshelper.mybatis.check.DefaultCerbosResourceResolver;
 import io.cerboshelper.mybatis.config.CerbosHelperConfig;
 import io.cerboshelper.mybatis.config.CerbosHelperConfigurer;
-import io.cerboshelper.mybatis.convention.CerbosCheckConventionResolver;
 import io.cerboshelper.mybatis.convention.CerbosCommonResourceRegistry;
-import io.cerboshelper.mybatis.convention.CerbosScopeConventionResolver;
-import io.cerboshelper.mybatis.model.CerbosCommonDto;
+import io.cerboshelper.mybatis.rule.CerbosCheckRuleResolver;
+import io.cerboshelper.mybatis.rule.CerbosScopeRuleResolver;
 import io.cerboshelper.mybatis.scope.CerbosMyBatisInterceptorOrderStrategy;
 import io.cerboshelper.mybatis.scope.DefaultCerbosMyBatisInterceptorOrderStrategy;
 import io.cerboshelper.mybatis.sql.CerbosSqlPredicateInjector;
 import io.cerboshelper.mybatis.sql.DefaultCerbosSqlPredicateInjector;
 import io.cerboshelper.mybatis.sql.CerbosResourceColumnRegistry;
 import io.cerboshelper.mybatis.sql.CerbosResourceColumns;
-import io.cerboshelper.mybatis.support.CerbosMethodExpressionEvaluator;
-import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.context.annotation.Bean;
-import org.springframework.core.type.filter.AssignableTypeFilter;
-import org.aspectj.lang.annotation.Aspect;
 import dev.cerbos.sdk.CerbosBlockingClient;
 
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -57,20 +45,20 @@ public class CerbosHelperAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    CerbosCommonResourceRegistry cerbosCommonResourceRegistry(BeanFactory beanFactory) {
-        return new CerbosCommonResourceRegistry(scanCommonResourceTypes(beanFactory));
+    CerbosCommonResourceRegistry cerbosCommonResourceRegistry(CerbosHelperConfigurer configurer) {
+        return CerbosCommonResourceRegistry.configured(configurer.resources().resources());
     }
 
     @Bean
     @ConditionalOnMissingBean
-    CerbosCheckConventionResolver cerbosCheckConventionResolver(CerbosCommonResourceRegistry registry) {
-        return new CerbosCheckConventionResolver(registry);
+    CerbosCheckRuleResolver cerbosCheckRuleResolver(CerbosCommonResourceRegistry registry, CerbosHelperConfigurer configurer) {
+        return new CerbosCheckRuleResolver(registry, configurer.methodRules());
     }
 
     @Bean
     @ConditionalOnMissingBean
-    CerbosScopeConventionResolver cerbosScopeConventionResolver(CerbosCommonResourceRegistry registry) {
-        return new CerbosScopeConventionResolver(registry);
+    CerbosScopeRuleResolver cerbosScopeRuleResolver(CerbosCommonResourceRegistry registry, CerbosHelperConfigurer configurer) {
+        return new CerbosScopeRuleResolver(registry, configurer.methodRules());
     }
 
     @Bean
@@ -102,26 +90,10 @@ public class CerbosHelperAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnClass(Aspect.class)
     @ConditionalOnBean(CerbosAuthorizationClient.class)
     @ConditionalOnMissingBean
-    CerbosResourceCheckExecutor cerbosResourceCheckExecutor(CerbosAuthorizationClient authorizationClient, BeanFactory beanFactory, CerbosPrincipalResolver principalResolver, CerbosAccessDeniedHandler accessDeniedHandler, CerbosResourceResolver resourceResolver) {
-        return new CerbosResourceCheckExecutor(authorizationClient, beanFactory, principalResolver, accessDeniedHandler, resourceResolver);
-    }
-
-    @Bean
-    @ConditionalOnClass(Aspect.class)
-    @ConditionalOnBean(CerbosResourceCheckExecutor.class)
-    @ConditionalOnMissingBean
-    CerbosAutoCheckAspect cerbosAutoCheckAspect(CerbosCheckConventionResolver conventionResolver, CerbosResourceCheckExecutor checkExecutor, CerbosHelperConfigurer configurer) {
-        return new CerbosAutoCheckAspect(conventionResolver, checkExecutor, configurer.autoCheck());
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    CerbosResourceResolver cerbosResourceResolver(BeanFactory beanFactory, CerbosCommonResourceRegistry registry, CerbosHelperConfigurer configurer) {
-        return configurer.resourceResolver()
-                .orElseGet(() -> new DefaultCerbosResourceResolver(beanFactory, new CerbosMethodExpressionEvaluator(beanFactory), registry));
+    CerbosResourceCheckExecutor cerbosResourceCheckExecutor(CerbosAuthorizationClient authorizationClient, CerbosPrincipalResolver principalResolver, CerbosAccessDeniedHandler accessDeniedHandler) {
+        return new CerbosResourceCheckExecutor(authorizationClient, principalResolver, accessDeniedHandler);
     }
 
     @Bean
@@ -153,12 +125,12 @@ public class CerbosHelperAutoConfiguration {
     @Bean
     @ConditionalOnBean({CerbosAuthorizationClient.class, CerbosPlanToSqlConverter.class})
     @ConditionalOnMissingBean
-    CerbosMyBatisScopeInterceptor cerbosMyBatisScopeInterceptor(CerbosAuthorizationClient authorizationClient, CerbosPlanToSqlConverter converter, CerbosSqlPredicateInjector sqlPredicateInjector, CerbosPrincipalResolver principalResolver, CerbosScopeConventionResolver conventionResolver) {
-        return new CerbosMyBatisScopeInterceptor(authorizationClient, converter, sqlPredicateInjector, principalResolver, conventionResolver);
+    CerbosMyBatisInterceptor cerbosMyBatisInterceptor(CerbosAuthorizationClient authorizationClient, CerbosPlanToSqlConverter converter, CerbosSqlPredicateInjector sqlPredicateInjector, CerbosPrincipalResolver principalResolver, CerbosScopeRuleResolver scopeRuleResolver, CerbosCheckRuleResolver checkRuleResolver, CerbosResourceCheckExecutor checkExecutor) {
+        return new CerbosMyBatisInterceptor(authorizationClient, converter, sqlPredicateInjector, principalResolver, scopeRuleResolver, checkRuleResolver, checkExecutor);
     }
 
     @Bean
-    @ConditionalOnBean(CerbosMyBatisScopeInterceptor.class)
+    @ConditionalOnBean(CerbosMyBatisInterceptor.class)
     SmartInitializingSingleton cerbosHelperInterceptorOrderVerifier(List<SqlSessionFactory> sqlSessionFactories, CerbosMyBatisInterceptorOrderStrategy interceptorOrderStrategy) {
         return () -> interceptorOrderStrategy.apply(sqlSessionFactories);
     }
@@ -170,26 +142,4 @@ public class CerbosHelperAutoConfiguration {
                 .orElseGet(DefaultCerbosMyBatisInterceptorOrderStrategy::new);
     }
 
-    private List<Class<?>> scanCommonResourceTypes(BeanFactory beanFactory) {
-        List<Class<?>> resourceTypes = new ArrayList<>();
-        if (!AutoConfigurationPackages.has(beanFactory)) {
-            return resourceTypes;
-        }
-        ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
-        scanner.addIncludeFilter(new AssignableTypeFilter(CerbosCommonDto.class));
-        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        for (String basePackage : AutoConfigurationPackages.get(beanFactory)) {
-            scanner.findCandidateComponents(basePackage).forEach(candidate -> {
-                try {
-                    Class<?> resourceType = Class.forName(candidate.getBeanClassName(), false, classLoader);
-                    if (!resourceType.isInterface() && !Modifier.isAbstract(resourceType.getModifiers())) {
-                        resourceTypes.add(resourceType);
-                    }
-                } catch (ClassNotFoundException exception) {
-                    throw new IllegalStateException("Cannot load Cerbos common resource type: " + candidate.getBeanClassName(), exception);
-                }
-            });
-        }
-        return resourceTypes;
-    }
 }

@@ -1,6 +1,6 @@
 package io.cerboshelper.mybatis;
 
-import io.cerboshelper.mybatis.scope.CerbosMyBatisScopeInterceptor;
+import io.cerboshelper.mybatis.scope.CerbosMyBatisInterceptor;
 import io.cerboshelper.mybatis.scope.DefaultCerbosMyBatisInterceptorOrderStrategy;
 import org.apache.ibatis.plugin.Interceptor;
 import org.apache.ibatis.plugin.Invocation;
@@ -18,7 +18,7 @@ class CerbosMyBatisInterceptorOrderStrategyTest {
     void movesCerbosInterceptorBeforeOtherInterceptors() {
         Configuration configuration = new Configuration();
         Interceptor pageHelperLikeInterceptor = new NoopInterceptor();
-        CerbosMyBatisScopeInterceptor cerbosInterceptor = new CerbosMyBatisScopeInterceptor(null, null, null, null);
+        CerbosMyBatisInterceptor cerbosInterceptor = new CerbosMyBatisInterceptor(null, null, null, null);
         configuration.addInterceptor(pageHelperLikeInterceptor);
         configuration.addInterceptor(cerbosInterceptor);
 
@@ -28,7 +28,7 @@ class CerbosMyBatisInterceptorOrderStrategyTest {
         List<Class<?>> interceptorTypes = configuration.getInterceptors().stream()
                 .map(Object::getClass)
                 .toList();
-        assertEquals(List.of(CerbosMyBatisScopeInterceptor.class, NoopInterceptor.class), interceptorTypes);
+        assertEquals(List.of(CerbosMyBatisInterceptor.class, NoopInterceptor.class), interceptorTypes);
     }
 
     static class NoopInterceptor implements Interceptor {

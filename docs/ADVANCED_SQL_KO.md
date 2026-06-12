@@ -22,15 +22,15 @@ FROM (
 WHERE (__cerbos_scope.owner_by = ?)
 ```
 
-`CerbosSqlPredicateInjector.predicateAlias(...)`의 기본값은 `__cerbos_scope`다. 원본 SQL에 같은 identifier가 있으면 `__cerbos_scope_1`, `__cerbos_scope_2`처럼 suffix를 붙인다. 그래서 `CerbosPlanToSqlConverter`는 Cerbos plan을 `__cerbos_scope.owner_by`, `__cerbos_scope.owner_org_by` 같은 outer alias 기준 predicate로 변환한다.
+`CerbosSqlPredicateInjector.predicateAlias(...)`의 기본값은 `__cerbos_scope`다. 원본 SQL에 같은 identifier가 있으면 `__cerbos_scope_1`, `__cerbos_scope_2`처럼 suffix를 붙인다. 그래서 `CerbosPlanToSqlConverter`는 Cerbos plan을 `__cerbos_scope.owner_by`, `__cerbos_scope.owner_group_by` 같은 outer alias 기준 predicate로 변환한다.
 
 Cerbos predicate가 비어 있는 allow-all plan이면 원본 SQL을 감싸지 않는다.
 
 ## 기본 원칙
 
 - Cerbos predicate가 참조하는 column은 inner query projection에 있어야 한다.
-- owner-column 정책이면 inner query가 `owner_by`, `owner_org_by`를 projection해야 한다.
-- `request.resource.attr.*`와 SQL column 매핑은 `owner_by`, `owner_org_by` 고정 규칙을 우선 사용한다.
+- owner-column 정책이면 inner query가 `owner_by`, `owner_group_by`를 projection해야 한다.
+- `request.resource.attr.*`와 SQL column 매핑은 `owner_by`, `owner_group_by` 고정 규칙을 우선 사용한다.
 - aggregate 결과처럼 원본 resource row가 사라진 결과에는 직접 scope를 걸지 않는다.
 - 기본 injector가 alias를 제공하지 않는 custom 구현으로 교체된 경우에는 top-level `FROM` / `JOIN`의 resource alias를 fallback으로 감지한다.
 

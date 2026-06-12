@@ -22,8 +22,8 @@ class CerbosResourceColumnsTest {
                 registry.columnFor("document", "request.resource.attr.ownerBy").orElseThrow()
         );
         assertEquals(
-                "document.owner_org_by",
-                registry.columnFor("document", "request.resource.attr.ownerOrgBy").orElseThrow()
+                "document.owner_group_by",
+                registry.columnFor("document", "request.resource.attr.ownerGroupBy").orElseThrow()
         );
         assertEquals(
                 "document.sensitivity_level",
@@ -63,7 +63,7 @@ class CerbosResourceColumnsTest {
                 .build();
 
         assertEquals("memo.owner_by", registry.columnFor("memo", "request.resource.attr.ownerBy").orElseThrow());
-        assertEquals("memo.owner_org_by", registry.columnFor("memo", "request.resource.attr.ownerOrgBy").orElseThrow());
+        assertEquals("memo.owner_group_by", registry.columnFor("memo", "request.resource.attr.ownerGroupBy").orElseThrow());
     }
 
     private static class Memo extends CerbosCommonDto {

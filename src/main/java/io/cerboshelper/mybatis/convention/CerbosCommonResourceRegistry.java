@@ -12,13 +12,25 @@ import java.util.Optional;
 
 public final class CerbosCommonResourceRegistry {
     public static final String OWNER_BY_ATTR = "ownerBy";
-    public static final String OWNER_ORG_BY_ATTR = "ownerOrgBy";
+    public static final String OWNER_GROUP_BY_ATTR = "ownerGroupBy";
     public static final String OWNER_BY_COLUMN = "owner_by";
-    public static final String OWNER_ORG_BY_COLUMN = "owner_org_by";
+    public static final String OWNER_GROUP_BY_COLUMN = "owner_group_by";
 
     private final List<CerbosCommonResource> resources;
 
     public CerbosCommonResourceRegistry(List<Class<?>> commonResourceTypes) {
+        this(defaultResources(commonResourceTypes));
+    }
+
+    public static CerbosCommonResourceRegistry configured(List<CerbosCommonResource> resources) {
+        return new CerbosCommonResourceRegistry(configuredResources(resources == null ? List.of() : resources));
+    }
+
+    private CerbosCommonResourceRegistry(Map<String, CerbosCommonResource> byKind) {
+        this.resources = List.copyOf(byKind.values());
+    }
+
+    private static Map<String, CerbosCommonResource> defaultResources(List<Class<?>> commonResourceTypes) {
         Map<String, CerbosCommonResource> byKind = new LinkedHashMap<>();
         for (Class<?> resourceType : commonResourceTypes) {
             if (!isConcreteCommonDto(resourceType)) {
@@ -27,7 +39,18 @@ public final class CerbosCommonResourceRegistry {
             CerbosCommonResource resource = defaultResource(resourceType);
             byKind.put(resource.resourceKind(), resource);
         }
-        this.resources = List.copyOf(byKind.values());
+        return byKind;
+    }
+
+    private static Map<String, CerbosCommonResource> configuredResources(List<CerbosCommonResource> commonResources) {
+        Map<String, CerbosCommonResource> byKind = new LinkedHashMap<>();
+        for (CerbosCommonResource resource : commonResources) {
+            if (resource == null || !isConcreteCommonDto(resource.resourceType())) {
+                continue;
+            }
+            byKind.put(resource.resourceKind(), resource);
+        }
+        return byKind;
     }
 
     public static boolean isCommonResourceType(Class<?> type) {
@@ -44,8 +67,7 @@ public final class CerbosCommonResourceRegistry {
         }
         return resources.stream()
                 .filter(resource -> resource.resourceType().isAssignableFrom(type) || type.isAssignableFrom(resource.resourceType()))
-                .findFirst()
-                .or(() -> isConcreteCommonDto(type) ? Optional.of(defaultResource(type)) : Optional.empty());
+                .findFirst();
     }
 
     public Optional<CerbosCommonResource> resourceForKind(String resourceKind) {
@@ -80,7 +102,7 @@ public final class CerbosCommonResourceRegistry {
         return kinds;
     }
 
-    private CerbosCommonResource defaultResource(Class<?> resourceType) {
+    private static CerbosCommonResource defaultResource(Class<?> resourceType) {
         String resourceKind = decapitalize(stripDtoSuffix(resourceType.getSimpleName()));
         return new CerbosCommonResource(resourceKind, resourceType, resourceKind);
     }
